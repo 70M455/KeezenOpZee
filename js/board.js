@@ -24,13 +24,14 @@ const Board = (() => {
     { x: 1, y: 0 },   // P3 left → right
   ];
 
-  /* Forward direction (clockwise around the track) — used to offset home cells
-     one cell ahead of the start (matches the physical Keezen board). */
-  const FORWARD = [
-    { x: 1, y: 0 },   // P0 top: forward = right
-    { x: 0, y: 1 },   // P1 right: forward = down
-    { x: -1, y: 0 },  // P2 bottom: forward = left
-    { x: 0, y: -1 },  // P3 left: forward = up
+  /* Backward direction (counter-clockwise around the track) — used to offset
+     home cells one cell BEHIND the start (matches the physical Keezen board:
+     the home branch enters just before the start when going clockwise). */
+  const BACKWARD = [
+    { x: -1, y: 0 },  // P0 top: backward = left
+    { x: 0, y: -1 },  // P1 right: backward = up
+    { x: 1, y: 0 },   // P2 bottom: backward = right
+    { x: 0, y: 1 },   // P3 left: backward = down
   ];
 
   /* Length of straight section per side, length of arc per corner */
@@ -88,16 +89,16 @@ const Board = (() => {
     };
   }
 
-  /* Home cell coordinates: branches off one cell forward of the start and goes inward */
+  /* Home cell coordinates: branches off one cell BEHIND the start and goes inward */
   function homeXY(playerIdx, slot) {
     const start = trackXY(START_POS[playerIdx]);
     const dir = INWARD[playerIdx];
-    const fwd = FORWARD[playerIdx];
+    const back = BACKWARD[playerIdx];
     const stepIn = 44;
-    const forwardShift = 44;   // one cell ahead of start
+    const backShift = 44;
     return {
-      x: start.x + fwd.x * forwardShift + dir.x * (slot + 1) * stepIn,
-      y: start.y + fwd.y * forwardShift + dir.y * (slot + 1) * stepIn,
+      x: start.x + back.x * backShift + dir.x * (slot + 1) * stepIn,
+      y: start.y + back.y * backShift + dir.y * (slot + 1) * stepIn,
     };
   }
 
@@ -142,9 +143,39 @@ const Board = (() => {
     svg.setAttribute('class', 'board-svg');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-    /* Defs: solid colour swatches for each player's hull (kept simple for clarity) */
+    /* Defs: filter for torn/frayed parchment edges, plus radial gradient for burnt edge */
     const defs = document.createElementNS(svgNS, 'defs');
+    defs.innerHTML = `
+      <filter id="frayedEdge" x="-8%" y="-8%" width="116%" height="116%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="3" seed="7" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+      <filter id="burntEdge" x="-10%" y="-10%" width="120%" height="120%">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feColorMatrix in="blur" type="matrix" values="
+          0.4 0 0 0 0.2
+          0   0.2 0 0 0.1
+          0   0 0.1 0 0.05
+          0 0 0 1 0"/>
+      </filter>
+      <radialGradient id="parchmentBg" cx="50%" cy="50%" r="65%">
+        <stop offset="0%" stop-color="#f4e3b4"/>
+        <stop offset="60%" stop-color="#e2c789"/>
+        <stop offset="92%" stop-color="#a06b32"/>
+        <stop offset="100%" stop-color="#3d2210"/>
+      </radialGradient>
+    `;
     svg.appendChild(defs);
+
+    /* Torn parchment backdrop — the displaced rectangle gives ragged edges */
+    const backdrop = document.createElementNS(svgNS, 'rect');
+    backdrop.setAttribute('x', -20);
+    backdrop.setAttribute('y', -20);
+    backdrop.setAttribute('width', SIZE + 40);
+    backdrop.setAttribute('height', SIZE + 40);
+    backdrop.setAttribute('fill', 'url(#parchmentBg)');
+    backdrop.setAttribute('filter', 'url(#frayedEdge)');
+    svg.appendChild(backdrop);
 
     /* Wrapper group used to rotate the whole board so the viewing seat is at the bottom */
     const root = document.createElementNS(svgNS, 'g');
@@ -247,11 +278,15 @@ const Board = (() => {
 
         const anchor = document.createElementNS(svgNS, 'text');
         anchor.setAttribute('x', x);
-        anchor.setAttribute('y', y + 6);
+        anchor.setAttribute('y', y + 7);
         anchor.setAttribute('text-anchor', 'middle');
-        anchor.setAttribute('font-size', '16');
-        anchor.setAttribute('fill', 'rgba(20,10,5,0.55)');
+        anchor.setAttribute('font-size', '22');
+        anchor.setAttribute('fill', '#1a0e08');
+        anchor.setAttribute('opacity', '0.85');
         anchor.setAttribute('pointer-events', 'none');
+        anchor.setAttribute('class', 'keep-upright');
+        anchor.setAttribute('data-cx', x);
+        anchor.setAttribute('data-cy', y + 7);
         anchor.textContent = '⚓';
         root.appendChild(anchor);
       }
@@ -356,12 +391,19 @@ const Board = (() => {
     return g;
   }
 
-  /* Rotate the board so the given seat (0..3) appears at the bottom of the screen */
+  /* Rotate the board so the given seat (0..3) appears at the bottom of the screen.
+     Elements with class `keep-upright` are counter-rotated so they always read upright. */
   function setViewRotation(svg, viewingSeat) {
     const root = svg && svg.querySelector('#board-root');
     if (!root) return;
     const angle = (((2 - viewingSeat) % 4) + 4) % 4 * 90;
     root.setAttribute('transform', `rotate(${angle} ${CENTER} ${CENTER})`);
+    // Counter-rotate symbols/labels so they stay readable
+    svg.querySelectorAll('.keep-upright').forEach(el => {
+      const cx = parseFloat(el.getAttribute('data-cx') || el.getAttribute('x'));
+      const cy = parseFloat(el.getAttribute('data-cy') || el.getAttribute('y'));
+      el.setAttribute('transform', `rotate(${-angle} ${cx} ${cy})`);
+    });
   }
 
   /* Update piece positions based on game state — mast always points to centre */
@@ -408,39 +450,50 @@ const Board = (() => {
     });
   }
 
-  /* Show a sequence of step numbers (1, 2, 3, ...) on cells of a path */
+  /* Show a sequence of step numbers (1, 2, 3, ...) on cells of a path.
+     Both circle and text get the `keep-upright` class so they don't rotate with the board. */
   function drawPathNumbers(svg, playerIdx, path) {
     clearPathNumbers(svg);
     if (!path || path.length === 0) return;
     const root = svg.querySelector('#board-root') || svg;
     const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     layer.setAttribute('id', 'path-numbers');
+    const angle = currentBoardAngle(svg);
     for (let i = 0; i < path.length; i++) {
       const loc = path[i];
       const xy = pieceXY(loc, playerIdx);
-      // Bubble
       const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       circ.setAttribute('cx', xy.x);
       circ.setAttribute('cy', xy.y);
-      circ.setAttribute('r', 10);
+      circ.setAttribute('r', 11);
       circ.setAttribute('fill', '#fff4a0');
       circ.setAttribute('stroke', '#5a4023');
-      circ.setAttribute('stroke-width', '1.5');
-      circ.setAttribute('opacity', '0.9');
+      circ.setAttribute('stroke-width', '1.8');
+      circ.setAttribute('opacity', '0.95');
       layer.appendChild(circ);
-      // Number
+
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', xy.x);
-      text.setAttribute('y', xy.y + 4);
+      text.setAttribute('y', xy.y + 5);
       text.setAttribute('text-anchor', 'middle');
       text.setAttribute('font-family', 'Cinzel, serif');
-      text.setAttribute('font-size', '13');
+      text.setAttribute('font-size', '15');
       text.setAttribute('font-weight', '700');
       text.setAttribute('fill', '#2a1810');
+      text.setAttribute('class', 'keep-upright');
+      text.setAttribute('data-cx', xy.x);
+      text.setAttribute('data-cy', xy.y + 5);
+      text.setAttribute('transform', `rotate(${-angle} ${xy.x} ${xy.y + 5})`);
       text.textContent = (i + 1);
       layer.appendChild(text);
     }
     root.appendChild(layer);
+  }
+
+  function currentBoardAngle(svg) {
+    const t = svg.querySelector('#board-root')?.getAttribute('transform') || '';
+    const m = t.match(/rotate\(([-\d.]+)/);
+    return m ? parseFloat(m[1]) : 0;
   }
 
   function clearPathNumbers(svg) {

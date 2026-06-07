@@ -594,23 +594,24 @@ html, body {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
   border: 2px solid var(--wood-dark);
-  border-radius: 12px;
+  border-radius: 10px;
   box-shadow: var(--shadow-soft);
   font-family: var(--font-body);
   pointer-events: auto;
-  min-width: 120px;
+  max-width: 150px;
+  white-space: nowrap;
 }
 .player-badge.active {
   border-color: var(--brass);
   box-shadow: 0 0 16px var(--brass);
 }
-.player-badge.pos-top    { top: 4px;    left: 50%; transform: translateX(-50%); }
-.player-badge.pos-right  { right: 4px;  top: 50%; transform: translateY(-50%); }
-.player-badge.pos-left   { left: 4px;   top: 50%; transform: translateY(-50%); }
+.player-badge.pos-top    { top: -42px;   left: 50%;  transform: translateX(-50%); }
+.player-badge.pos-right  { right: -132px; top: 50%;  transform: translateY(-50%); }
+.player-badge.pos-left   { left: -132px;  top: 50%;  transform: translateY(-50%); }
 .badge-info {
   display: flex;
   flex-direction: column;
@@ -621,13 +622,20 @@ html, body {
 .badge-name {
   font-weight: 700;
   font-family: var(--font-heading);
-  font-size: 14px;
-  letter-spacing: 0.3px;
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .badge-status {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--wood-dark);
   font-style: italic;
+}
+.player-badge .color-dot {
+  width: 16px;
+  height: 16px;
 }
 
 /* Discard pile in the middle of the board */
@@ -645,17 +653,31 @@ html, body {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 56px;
-  height: 78px;
-  margin-top: -39px;
-  margin-left: -28px;
+  width: 60px;
+  height: 84px;
+  margin-top: -42px;
+  margin-left: -30px;
   cursor: default !important;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
 }
 .discard-card .rank-top, .discard-card .rank-bottom {
-  font-size: 14px;
+  font-size: 15px;
 }
 .discard-card .suit-center {
   font-size: 22px;
+}
+.discard-count {
+  position: absolute;
+  top: calc(50% + 50px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--wood-dark);
+  white-space: nowrap;
+  background: rgba(244, 231, 200, 0.7);
+  padding: 2px 6px;
+  border-radius: 6px;
 }
 
 #board-container {
@@ -899,36 +921,14 @@ html, body {
    BOARD SVG
    ============================================================ */
 
-/* Treasure-map look: aged parchment with burnt edges and stains */
+/* Treasure-map look: the SVG itself draws the torn parchment via a frayed-edge filter,
+   so the wrapping element only needs a soft drop-shadow for depth. */
 .board-svg {
-  background:
-    radial-gradient(ellipse at 18% 22%, rgba(90, 40, 10, 0.32) 0%, transparent 22%),
-    radial-gradient(ellipse at 82% 12%, rgba(90, 40, 10, 0.28) 0%, transparent 24%),
-    radial-gradient(ellipse at 14% 78%, rgba(90, 40, 10, 0.30) 0%, transparent 25%),
-    radial-gradient(ellipse at 86% 84%, rgba(90, 40, 10, 0.32) 0%, transparent 24%),
-    radial-gradient(circle at 45% 60%, rgba(120, 85, 50, 0.18) 0%, transparent 30%),
-    radial-gradient(circle at 50% 50%, #f4e3b4 0%, #e2c789 60%, #b88a4c 95%, #7a4d1f 100%);
-  border-radius: 14px;
-  box-shadow:
-    inset 0 0 60px rgba(80, 40, 10, 0.55),
-    inset 0 0 140px rgba(60, 30, 5, 0.30),
-    0 8px 28px rgba(0, 0, 0, 0.55),
-    0 0 0 4px #4a2f15,
-    0 0 0 8px #2a1810;
+  background: transparent;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55))
+          drop-shadow(0 0 8px rgba(60, 30, 10, 0.55));
   position: relative;
-}
-/* Subtle stain spots — uses a layered set of small dark blotches */
-.board-svg::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 30% 40%, rgba(80, 50, 20, 0.18) 0%, transparent 5%),
-    radial-gradient(circle at 65% 30%, rgba(80, 50, 20, 0.14) 0%, transparent 4%),
-    radial-gradient(circle at 75% 65%, rgba(80, 50, 20, 0.16) 0%, transparent 4%);
-  border-radius: 14px;
-  mix-blend-mode: multiply;
+  overflow: visible;
 }
 
 .cell-bg {

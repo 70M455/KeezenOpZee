@@ -413,7 +413,9 @@ const App = (() => {
     const main = document.querySelector('.game-main');
     const wrap = document.querySelector('.board-wrapper');
     if (!main || !wrap) return;
-    const size = Math.min(main.clientWidth, main.clientHeight);
+    // Reserve 70 px of room around the board for player badges floating outside the loop
+    const reserve = 70;
+    const size = Math.max(280, Math.min(main.clientWidth, main.clientHeight) - reserve);
     wrap.style.width = size + 'px';
     wrap.style.height = size + 'px';
   }
@@ -455,15 +457,17 @@ const App = (() => {
     const container = document.getElementById('discard-stack');
     if (!container) return;
     container.innerHTML = '';
-    const recent = (gs.discard || []).slice(-3);
-    recent.forEach((card, i) => {
-      const el = makeCardEl(card);
-      el.classList.add('discard-card');
-      el.style.transform = `rotate(${(i - 1) * 6}deg) translateY(${-i * 4}px)`;
-      el.style.zIndex = i;
-      el.style.cursor = 'default';
-      container.appendChild(el);
-    });
+    const last = (gs.discard || []).slice(-1)[0];
+    if (!last) return;
+    const el = makeCardEl(last);
+    el.classList.add('discard-card');
+    el.style.cursor = 'default';
+    container.appendChild(el);
+    // Small "n cards in pile" label under the card
+    const count = document.createElement('div');
+    count.className = 'discard-count';
+    count.textContent = `${gs.discard.length} kaart${gs.discard.length === 1 ? '' : 'en'} afgelegd`;
+    container.appendChild(count);
   }
 
   function maybeShowIntermezzo() {
@@ -546,9 +550,13 @@ const App = (() => {
 
     for (const idx of active) {
       if (idx === myIdx) continue;
-      // Relative position around the table after rotation (bottom = me)
-      const rel = (idx - myIdx + 4) % 4;   // 1=right, 2=top, 3=left
-      const posClass = rel === 1 ? 'pos-right' : rel === 2 ? 'pos-top' : 'pos-left';
+      // Where does this seat appear AFTER rotation? Board rotates (2-mySeat)*90 CW,
+      // so seat idx ends at clock position (idx + 2 - mySeat) % 4 (0=top, 1=right, 2=bottom, 3=left).
+      const finalPos = (idx + 2 - myIdx + 4) % 4;
+      const posClass = finalPos === 0 ? 'pos-top'
+                      : finalPos === 1 ? 'pos-right'
+                      : finalPos === 3 ? 'pos-left'
+                      : 'pos-top';        // (2 = my own seat — shouldn't reach here)
       const p = gs.players[idx];
 
       const badge = document.createElement('div');
@@ -901,12 +909,8 @@ const App = (() => {
     // Pick the move with highest steps (most relevant when multiple steps possible — rare)
     const move = candidates.sort((a, b) => (b.steps || 0) - (a.steps || 0))[0];
 
-    if (state.sevenInProgress) {
-      // Apply a seven step locally and continue (no confirm step for splits)
-      applySevenStep(move);
-    } else {
-      setPendingMove(move);
-    }
+    // Always use preview + confirm — the breadcrumb numbers help reading the move
+    setPendingMove(move);
   }
 
   /* ============================================================
@@ -931,7 +935,11 @@ const App = (() => {
     const move = state.pendingMove;
     state.pendingMove = null;
     removePreview();
-    doAction({ type: 'move', move });
+    if (move.type === 'sevenStep') {
+      applySevenStep(move);
+    } else {
+      doAction({ type: 'move', move });
+    }
   }
 
   function drawPreview(move) {
@@ -1009,10 +1017,9 @@ const App = (() => {
   function applySevenStep(move) {
     const gs = state.gameState;
     const piece = gs.players[move.pieceRef.playerIdx].pieces[move.pieceRef.pieceIdx];
-    // Optimistically apply step locally for visualization
     if (move.dest.type === 'track') {
       const occ = Game.trackPieceAt(gs, move.dest.pos);
-      if (occ && occ.playerIdx !== move.pieceRef.playerIdx) {
+      if (occ && (occ.playerIdx !== move.pieceRef.playerIdx || occ.piece.index !== piece.index)) {
         const used = gs.players[occ.playerIdx].pieces
           .filter(x => x.location.type === 'kennel').map(x => x.location.slot);
         let slot = 0;
@@ -1161,8 +1168,8 @@ const App = (() => {
      ============================================================ */
   function scheduleBotsIfNeeded() {
     if (state.mode === 'client') return; // host runs bots
-    // 5 second pause before & after each bot — humans need time to read what happened
-    setTimeout(playBotIfNeeded, 5000);
+    // 3 second pause before & after each bot — humans need time to read what happened
+    setTimeout(playBotIfNeeded, 3000);
   }
 
   function playBotIfNeeded() {
