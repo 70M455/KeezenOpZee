@@ -899,12 +899,36 @@ html, body {
    BOARD SVG
    ============================================================ */
 
+/* Treasure-map look: aged parchment with burnt edges and stains */
 .board-svg {
   background:
-    radial-gradient(circle at 50% 50%, var(--parchment) 0%, var(--parchment-dark) 80%, var(--wood-mid) 100%);
-  border-radius: 16px;
-  box-shadow: var(--shadow-deep), inset 0 0 100px rgba(139, 111, 71, 0.4);
-  border: 6px solid var(--wood-dark);
+    radial-gradient(ellipse at 18% 22%, rgba(90, 40, 10, 0.32) 0%, transparent 22%),
+    radial-gradient(ellipse at 82% 12%, rgba(90, 40, 10, 0.28) 0%, transparent 24%),
+    radial-gradient(ellipse at 14% 78%, rgba(90, 40, 10, 0.30) 0%, transparent 25%),
+    radial-gradient(ellipse at 86% 84%, rgba(90, 40, 10, 0.32) 0%, transparent 24%),
+    radial-gradient(circle at 45% 60%, rgba(120, 85, 50, 0.18) 0%, transparent 30%),
+    radial-gradient(circle at 50% 50%, #f4e3b4 0%, #e2c789 60%, #b88a4c 95%, #7a4d1f 100%);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 60px rgba(80, 40, 10, 0.55),
+    inset 0 0 140px rgba(60, 30, 5, 0.30),
+    0 8px 28px rgba(0, 0, 0, 0.55),
+    0 0 0 4px #4a2f15,
+    0 0 0 8px #2a1810;
+  position: relative;
+}
+/* Subtle stain spots — uses a layered set of small dark blotches */
+.board-svg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(80, 50, 20, 0.18) 0%, transparent 5%),
+    radial-gradient(circle at 65% 30%, rgba(80, 50, 20, 0.14) 0%, transparent 4%),
+    radial-gradient(circle at 75% 65%, rgba(80, 50, 20, 0.16) 0%, transparent 4%);
+  border-radius: 14px;
+  mix-blend-mode: multiply;
 }
 
 .cell-bg {

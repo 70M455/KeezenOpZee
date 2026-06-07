@@ -24,6 +24,15 @@ const Board = (() => {
     { x: 1, y: 0 },   // P3 left → right
   ];
 
+  /* Forward direction (clockwise around the track) — used to offset home cells
+     one cell ahead of the start (matches the physical Keezen board). */
+  const FORWARD = [
+    { x: 1, y: 0 },   // P0 top: forward = right
+    { x: 0, y: 1 },   // P1 right: forward = down
+    { x: -1, y: 0 },  // P2 bottom: forward = left
+    { x: 0, y: -1 },  // P3 left: forward = up
+  ];
+
   /* Length of straight section per side, length of arc per corner */
   const innerSize = SIZE - 2 * TRACK_PADDING;
   const straightLen = innerSize - 2 * CORNER_R;
@@ -79,14 +88,16 @@ const Board = (() => {
     };
   }
 
-  /* Home cell coordinates (going inward from start) */
+  /* Home cell coordinates: branches off one cell forward of the start and goes inward */
   function homeXY(playerIdx, slot) {
     const start = trackXY(START_POS[playerIdx]);
     const dir = INWARD[playerIdx];
+    const fwd = FORWARD[playerIdx];
     const stepIn = 44;
+    const forwardShift = 44;   // one cell ahead of start
     return {
-      x: start.x + dir.x * (slot + 1) * stepIn,
-      y: start.y + dir.y * (slot + 1) * stepIn,
+      x: start.x + fwd.x * forwardShift + dir.x * (slot + 1) * stepIn,
+      y: start.y + fwd.y * forwardShift + dir.y * (slot + 1) * stepIn,
     };
   }
 
