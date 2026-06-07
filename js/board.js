@@ -110,8 +110,15 @@ const Board = (() => {
     return { x: 0, y: 0 };
   }
 
-  /* Rotation in degrees so the boat sail points "outward" away from center */
-  const BOAT_ROTATION = [180, 270, 0, 90];
+  /* Dynamic rotation so the mast always points to the board center */
+  function rotationFor(location, playerIdx) {
+    const { x, y } = pieceXY(location, playerIdx);
+    const dx = CENTER - x;
+    const dy = CENTER - y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return 0;
+    // Default mast direction is (0, -1) (up). Rotate so mast points to (dx, dy).
+    return Math.atan2(dx, -dy) * 180 / Math.PI;
+  }
 
   /* ============================================================
      SVG BUILDER
@@ -123,39 +130,8 @@ const Board = (() => {
     svg.setAttribute('class', 'board-svg');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-    /* Defs: gradients for sails (player colors) and reusable shapes */
+    /* Defs: solid colour swatches for each player's hull (kept simple for clarity) */
     const defs = document.createElementNS(svgNS, 'defs');
-    const colors = [
-      { id: 'p0', light: '#ffe770', mid: '#e8c547', dark: '#a8841d' },
-      { id: 'p1', light: '#f1574a', mid: '#c0392b', dark: '#7a1f15' },
-      { id: 'p2', light: '#4ec182', mid: '#2e8b57', dark: '#1a5535' },
-      { id: 'p3', light: '#5aa7df', mid: '#2b6cb0', dark: '#173d66' },
-    ];
-    colors.forEach(c => {
-      const grad = document.createElementNS(svgNS, 'linearGradient');
-      grad.setAttribute('id', `sail-${c.id}`);
-      grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
-      grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
-      const s1 = document.createElementNS(svgNS, 'stop');
-      s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', c.light);
-      const s2 = document.createElementNS(svgNS, 'stop');
-      s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', c.mid);
-      grad.appendChild(s1); grad.appendChild(s2);
-      defs.appendChild(grad);
-    });
-
-    // Hull gradient — warm wood for all boats
-    const hullGrad = document.createElementNS(svgNS, 'linearGradient');
-    hullGrad.setAttribute('id', 'hull-grad');
-    hullGrad.setAttribute('x1', '0'); hullGrad.setAttribute('y1', '0');
-    hullGrad.setAttribute('x2', '0'); hullGrad.setAttribute('y2', '1');
-    const h1 = document.createElementNS(svgNS, 'stop');
-    h1.setAttribute('offset', '0%'); h1.setAttribute('stop-color', '#a87a4a');
-    const h2 = document.createElementNS(svgNS, 'stop');
-    h2.setAttribute('offset', '100%'); h2.setAttribute('stop-color', '#5a3a20');
-    hullGrad.appendChild(h1); hullGrad.appendChild(h2);
-    defs.appendChild(hullGrad);
-
     svg.appendChild(defs);
 
     /* Track loop background (rounded rectangle behind cells) */
@@ -290,8 +266,10 @@ const Board = (() => {
         boat.setAttribute('id', `piece-${p}-${i}`);
         boat.setAttribute('data-piece-player', p);
         boat.setAttribute('data-piece-index', i);
+        const loc = { type: 'kennel', slot: i };
         const { x, y } = kennelXY(p, i);
-        boat.setAttribute('transform', `translate(${x}, ${y}) rotate(${BOAT_ROTATION[p]})`);
+        const rot = rotationFor(loc, p);
+        boat.setAttribute('transform', `translate(${x}, ${y}) rotate(${rot})`);
         svg.appendChild(boat);
       }
     }
@@ -301,63 +279,75 @@ const Board = (() => {
     return svg;
   }
 
-  /* Build a boat-shaped piece for player p */
+  /* Build a boat-shaped piece for player p — solid colours, thick dark outline */
   function buildBoat(p) {
     const svgNS = 'http://www.w3.org/2000/svg';
+    const COLORS = [
+      { hull: '#f1cf3f', dark: '#7a5e10' }, // P0 sun yellow
+      { hull: '#d8392a', dark: '#5d130a' }, // P1 red lighthouse
+      { hull: '#2aa367', dark: '#0e3d23' }, // P2 deep sea green
+      { hull: '#2c7fc9', dark: '#0e2f55' }, // P3 ocean blue
+    ];
+    const c = COLORS[p];
+
     const g = document.createElementNS(svgNS, 'g');
     g.setAttribute('class', `piece piece-p${p}`);
 
-    // Hull — a small ship hull (curve at bottom)
+    // Hull — solid player colour, thick dark outline so it stands out on any background
     const hull = document.createElementNS(svgNS, 'path');
-    hull.setAttribute('d', 'M -13 1 Q -14 7 -8 9 L 8 9 Q 14 7 13 1 Z');
-    hull.setAttribute('fill', 'url(#hull-grad)');
-    hull.setAttribute('stroke', '#3a2410');
-    hull.setAttribute('stroke-width', '1.2');
+    hull.setAttribute('d', 'M -14 0 Q -16 8 -10 11 L 10 11 Q 16 8 14 0 Z');
+    hull.setAttribute('fill', c.hull);
+    hull.setAttribute('stroke', '#15080c');
+    hull.setAttribute('stroke-width', '2');
+    hull.setAttribute('stroke-linejoin', 'round');
     g.appendChild(hull);
 
-    // Deck line
-    const deck = document.createElementNS(svgNS, 'line');
-    deck.setAttribute('x1', -12); deck.setAttribute('y1', 1);
-    deck.setAttribute('x2', 12);  deck.setAttribute('y2', 1);
-    deck.setAttribute('stroke', '#3a2410');
-    deck.setAttribute('stroke-width', '1');
+    // Deck line (gunwale stripe)
+    const deck = document.createElementNS(svgNS, 'path');
+    deck.setAttribute('d', 'M -13 1 L 13 1');
+    deck.setAttribute('stroke', '#15080c');
+    deck.setAttribute('stroke-width', '1.5');
     g.appendChild(deck);
 
-    // Mast
+    // Mast — thick dark wooden mast pointing toward center
     const mast = document.createElementNS(svgNS, 'line');
     mast.setAttribute('x1', 0); mast.setAttribute('y1', 1);
-    mast.setAttribute('x2', 0); mast.setAttribute('y2', -14);
-    mast.setAttribute('stroke', '#3a2410');
-    mast.setAttribute('stroke-width', '1.4');
+    mast.setAttribute('x2', 0); mast.setAttribute('y2', -17);
+    mast.setAttribute('stroke', '#15080c');
+    mast.setAttribute('stroke-width', '2');
+    mast.setAttribute('stroke-linecap', 'round');
     g.appendChild(mast);
 
-    // Sail — colored triangle with player color
+    // Sail — bright white triangular sail with strong outline
     const sail = document.createElementNS(svgNS, 'path');
-    sail.setAttribute('d', 'M 0 -14 L 9 -3 L 0 -2 Z');
-    sail.setAttribute('fill', `url(#sail-p${p})`);
-    sail.setAttribute('stroke', '#3a2410');
-    sail.setAttribute('stroke-width', '1');
+    sail.setAttribute('d', 'M 1 -16 L 11 -3 L 1 -3 Z');
+    sail.setAttribute('fill', '#fdf8e8');
+    sail.setAttribute('stroke', '#15080c');
+    sail.setAttribute('stroke-width', '1.5');
+    sail.setAttribute('stroke-linejoin', 'round');
     g.appendChild(sail);
 
-    // Tiny pennant flag on top
+    // Pennant flag in player colour at top of mast
     const flag = document.createElementNS(svgNS, 'path');
-    flag.setAttribute('d', 'M 0 -14 L 4 -16 L 0 -17 Z');
-    flag.setAttribute('fill', `url(#sail-p${p})`);
-    flag.setAttribute('stroke', '#3a2410');
-    flag.setAttribute('stroke-width', '0.6');
+    flag.setAttribute('d', 'M 0 -17 L 7 -19 L 0 -21 Z');
+    flag.setAttribute('fill', c.hull);
+    flag.setAttribute('stroke', '#15080c');
+    flag.setAttribute('stroke-width', '1');
+    flag.setAttribute('stroke-linejoin', 'round');
     g.appendChild(flag);
 
     return g;
   }
 
-  /* Update piece positions based on game state */
+  /* Update piece positions based on game state — mast always points to centre */
   function updatePieces(svg, players) {
     players.forEach((player, pIdx) => {
       player.pieces.forEach((piece, idx) => {
         const el = svg.querySelector(`#piece-${pIdx}-${idx}`);
         if (!el) return;
         const { x, y } = pieceXY(piece.location, pIdx);
-        el.setAttribute('transform', `translate(${x}, ${y}) rotate(${BOAT_ROTATION[pIdx]})`);
+        const rot = rotationFor(piece.location, pIdx);
+        el.setAttribute('transform', `translate(${x}, ${y}) rotate(${rot})`);
       });
     });
   }
