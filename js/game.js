@@ -56,7 +56,6 @@ const Game = (() => {
      ------------------------------------------------------------ */
   function newGame(playerInfos /* [{id,name,isBot,seat?}] */, seed, options = {}) {
     const activeSeats = options.activeSeats || [0, 1, 2, 3];
-    const teamMode = options.teamMode !== undefined ? options.teamMode : (activeSeats.length === 4);
 
     const players = [];
     for (let idx = 0; idx < 4; idx++) {
@@ -68,7 +67,6 @@ const Game = (() => {
         name: info ? info.name : `Stoel ${idx + 1}`,
         isBot: info ? !!info.isBot : false,
         active: isActive,
-        team: idx % 2,
         hand: [],
         pieces: Array.from({ length: NUM_PIECES }, (_, i) => ({
           index: i,
@@ -82,7 +80,6 @@ const Game = (() => {
     const state = {
       players,
       activeSeats,
-      teamMode,
       currentPlayerIdx: activeSeats[0],
       dealerIdx: activeSeats[0],
       roundNumber: 1,
@@ -90,7 +87,6 @@ const Game = (() => {
       discard: [],
       seed: seed || Math.floor(Math.random() * 1e9),
       phase: 'playing',
-      winnerTeam: null,
       finishOrder: [],          // seat indices in order of finishing
       log: [],
     };
@@ -320,10 +316,8 @@ const Game = (() => {
     const player = state.players[playerIdx];
     const startPos = START_POS[playerIdx];
 
-    // In team mode, once your pieces are all home you control your teammate's pieces.
-    const allMyPiecesHome = player.pieces.every(p => p.location.type === 'home');
-    const teammateIdx = (state.teamMode && allMyPiecesHome) ? (playerIdx + 2) % 4 : playerIdx;
-    const movePieces = state.players[teammateIdx].pieces;
+    const teammateIdx = playerIdx;
+    const movePieces = player.pieces;
 
     // Helper to add a forward move (may produce multiple — home vs continue-track)
     const tryForward = (piece, steps) => {
@@ -435,9 +429,7 @@ const Game = (() => {
   /* Can the player fully spend a 7? Split must be over 1 or 2 DIFFERENT pieces.
      Same piece may NOT be used in two stages. */
   function canSpendSeven(state, playerIdx) {
-    const player = state.players[playerIdx];
-    const allMyHome = player.pieces.every(p => p.location.type === 'home');
-    const effective = (state.teamMode && allMyHome) ? (playerIdx + 2) % 4 : playerIdx;
+    const effective = playerIdx;
     const pieces = state.players[effective].pieces.filter(p => p.location.type !== 'kennel');
     if (pieces.length === 0) return false;
     // Try single piece full 7
@@ -605,20 +597,12 @@ const Game = (() => {
       }
     }
 
-    // Active player count
     const n = activePlayers.length;
-    // Game ends when only one player is left (or zero)
     if (state.finishOrder.length >= n - 1) {
-      // Append the last remaining player(s) to finishOrder
       for (const p of activePlayers) {
         if (!state.finishOrder.includes(p.idx)) state.finishOrder.push(p.idx);
       }
       state.phase = 'finished';
-      // Team mode: assign winning team based on first-to-finish
-      if (state.teamMode) {
-        const first = state.finishOrder[0];
-        state.winnerTeam = first % 2;
-      }
       state.log.push(`🏆 Spel afgelopen`);
     }
   }
@@ -654,26 +638,18 @@ const Game = (() => {
 
   function scoreMove(state, playerIdx, move) {
     let score = 1;
-    // Prefer exiting kennel
     if (move.type === 'exitKennel') score += 50;
-    // Prefer captures
     if (move.dest.type === 'track') {
       const occ = trackPieceAt(state, move.dest.pos);
-      if (occ && occ.playerIdx !== move.pieceRef.playerIdx) {
-        if (state.players[occ.playerIdx].team !== state.players[playerIdx].team) score += 40;
-      }
+      if (occ && occ.playerIdx !== move.pieceRef.playerIdx) score += 40;
     }
-    // Prefer entering home
     if (move.dest.type === 'home') score += 20 + move.dest.slot * 5;
-    // Prefer moving farthest pieces (more progress)
     if (move.steps) score += move.steps;
     return score;
   }
 
   function pickBotSevenPlan(state, playerIdx, card) {
-    const player = state.players[playerIdx];
-    const allMyHome = player.pieces.every(p => p.location.type === 'home');
-    const eff = (state.teamMode && allMyHome) ? (playerIdx + 2) % 4 : playerIdx;
+    const eff = playerIdx;
     const pieces = state.players[eff].pieces.filter(p => p.location.type !== 'kennel');
 
     // Single piece full 7 (pick first valid destination)
@@ -708,13 +684,12 @@ const Game = (() => {
   }
 
   function scoreSevenPlan(state, playerIdx, plan) {
-    // Simple: prefer plans that capture opponents or enter home
     let score = 7;
     for (const step of plan) {
       if (step.dest.type === 'home') score += 15;
       if (step.dest.type === 'track') {
         const occ = trackPieceAt(state, step.dest.pos);
-        if (occ && state.players[occ.playerIdx].team !== state.players[playerIdx].team) score += 30;
+        if (occ && occ.playerIdx !== playerIdx) score += 30;
       }
     }
     return score;

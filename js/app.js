@@ -188,9 +188,9 @@ const App = (() => {
         buttons.forEach(b => b.classList.toggle('active', b === btn));
         const hint = document.getElementById('count-hint');
         if (hint) {
-          if (n === 4) hint.textContent = 'Vier spelers — teamspel (geel + groen tegen rood + blauw)';
+          if (n === 4) hint.textContent = 'Vier spelers — ieder voor zich';
           else if (n === 3) hint.textContent = 'Drie spelers — ieder voor zich';
-          else hint.textContent = 'Twee spelers — geel tegen groen (tegenover elkaar)';
+          else hint.textContent = 'Twee spelers — tegenover elkaar (geel en groen)';
         }
         renderLobby();
         Network.broadcastLobby(state.lobby);
@@ -225,7 +225,6 @@ const App = (() => {
     const activeSeats = (lobby.activeSeats && lobby.activeSeats.length)
       ? lobby.activeSeats
       : [0, 1, 2, 3];
-    const teamMode = activeSeats.length === 4;
 
     // Show the player-count picker only for host
     const picker = document.querySelector('.lobby-only-host');
@@ -260,13 +259,6 @@ const App = (() => {
       }
 
       row.append(dot, nameEl, roleEl);
-
-      if (teamMode) {
-        const team = document.createElement('span');
-        team.className = 'team-badge';
-        team.textContent = (seatIdx % 2 === 0) ? 'TEAM ★' : 'TEAM ◆';
-        row.append(team);
-      }
 
       if (isHostView && !p) {
         if (isBotSeat) {
@@ -376,10 +368,7 @@ const App = (() => {
     }
 
     state.lobby.seatMapping = seatMapping;
-    state.gameState = Game.newGame(playerInfos, Date.now() & 0x7fffffff, {
-      activeSeats,
-      teamMode: activeSeats.length === 4,
-    });
+    state.gameState = Game.newGame(playerInfos, Date.now() & 0x7fffffff, { activeSeats });
     state.activeSeats = activeSeats;
     state.mySeat = activeSeats[0];
 
@@ -1258,9 +1247,7 @@ const App = (() => {
     const trophy = ['🥇', '🥈', '🥉', '🎖'];
 
     let title;
-    if (gs.teamMode && gs.winnerTeam != null) {
-      title = '🏆 ' + TEAM_NAMES[gs.winnerTeam] + ' wint!';
-    } else if (order.length > 0) {
+    if (order.length > 0) {
       const winner = gs.players[order[0]];
       title = '🏆 ' + winner.name + ' wint!';
     } else {

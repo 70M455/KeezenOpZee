@@ -661,7 +661,7 @@ html, body {
   width: 100px;
   height: 100px;
 }
-.discard-card {
+.discard-stack .discard-card {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -669,13 +669,14 @@ html, body {
   height: 84px;
   cursor: default !important;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
-  /* Inline transform set per card combines translate(-50%, -50%) with rotation */
+  margin: 0;
   transform-origin: center;
 }
-.discard-card .rank-top, .discard-card .rank-bottom {
+.discard-stack .discard-card .rank-top,
+.discard-stack .discard-card .rank-bottom {
   font-size: 15px;
 }
-.discard-card .suit-center {
+.discard-stack .discard-card .suit-center {
   font-size: 22px;
 }
 
