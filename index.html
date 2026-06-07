@@ -105,7 +105,7 @@
           <span class="btn-icon">⚓</span>
           <span class="btn-text"><strong>Werp de trossen los!</strong></span>
         </button>
-        <p class="hint">Het spel werkt vanaf 2 spelers (lege plaatsen worden bemand door botbemanning)</p>
+        <p class="hint">Klik op een lege stoel om er een bot te plaatsen, of laat hem leeg voor een speler.</p>
       </div>
       <p class="hint" id="lobby-waiting">Wachten op de kapitein...</p>
       <button class="btn btn-link" data-back="menu">← Verlaat de boot</button>
@@ -120,10 +120,20 @@
       <p class="subtitle">Vul de namen van de bemanning in</p>
 
       <div class="join-form" id="local-names">
-        <div class="local-row"><span class="color-dot" data-color="yellow"></span><input type="text" data-seat="0" placeholder="Naam matroos 1" /></div>
-        <div class="local-row"><span class="color-dot" data-color="red"></span><input type="text" data-seat="1" placeholder="Naam matroos 2" /></div>
-        <div class="local-row"><span class="color-dot" data-color="green"></span><input type="text" data-seat="2" placeholder="Naam matroos 3" /></div>
-        <div class="local-row"><span class="color-dot" data-color="blue"></span><input type="text" data-seat="3" placeholder="Naam matroos 4" /></div>
+        <div class="seat-picker">
+          <label>Aantal echte spelers</label>
+          <div class="segmented" id="local-human-count">
+            <button type="button" data-count="1">1</button>
+            <button type="button" data-count="2">2</button>
+            <button type="button" data-count="3">3</button>
+            <button type="button" data-count="4" class="active">4</button>
+          </div>
+          <small class="picker-hint" id="bot-hint">Lege stoelen worden bemand door botbemanning</small>
+        </div>
+        <div class="local-row" data-seat-row="0"><span class="color-dot" data-color="yellow"></span><input type="text" data-seat="0" placeholder="Naam matroos 1" /></div>
+        <div class="local-row" data-seat-row="1"><span class="color-dot" data-color="red"></span><input type="text" data-seat="1" placeholder="Naam matroos 2" /></div>
+        <div class="local-row" data-seat-row="2"><span class="color-dot" data-color="green"></span><input type="text" data-seat="2" placeholder="Naam matroos 3" /></div>
+        <div class="local-row" data-seat-row="3"><span class="color-dot" data-color="blue"></span><input type="text" data-seat="3" placeholder="Naam matroos 4" /></div>
         <button class="btn btn-primary" id="local-start">
           <span class="btn-icon">⚓</span>
           <span class="btn-text"><strong>Begin de reis</strong></span>

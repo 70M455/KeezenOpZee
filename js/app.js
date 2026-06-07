@@ -20,6 +20,8 @@ const App = (() => {
     sevenInProgress: null,          // { card, remaining, plan: [], baseState }
     swapInProgress: null,           // { card, myPieceRef }
     showSeats: false,               // local hot-seat: show one seat's hand at a time
+    localHumanCount: 4,             // 1..4 humans in local mode (rest = bots)
+    botSeats: new Set(),            // host: seats explicitly marked as bot in lobby
   };
 
   /* ============================================================
@@ -157,7 +159,8 @@ const App = (() => {
     const lobby = state.lobby;
     if (!lobby) return;
 
-    // Render 4 seats; fill with player or "wachten" / "bot"
+    const isHostView = state.mode === 'host';
+
     for (let i = 0; i < 4; i++) {
       const row = document.createElement('div');
       row.className = 'player-row';
@@ -170,13 +173,20 @@ const App = (() => {
       roleEl.className = 'player-role';
 
       const p = lobby.players[i];
+      const isBotSeat = state.botSeats && state.botSeats.has(i);
+
       if (p) {
         nameEl.textContent = p.name + (p.isHost ? ' ⚓' : '');
         roleEl.textContent = PLAYER_COLOR_NAMES[i];
+      } else if (isBotSeat) {
+        nameEl.textContent = '🤖 Bot';
+        roleEl.textContent = PLAYER_COLOR_NAMES[i];
+        row.style.opacity = '0.85';
       } else {
-        nameEl.textContent = '— wachten —';
-        roleEl.textContent = PLAYER_COLOR_NAMES[i] + ' (bot bij start)';
-        row.style.opacity = '0.6';
+        nameEl.textContent = '— wachten op speler —';
+        roleEl.textContent = PLAYER_COLOR_NAMES[i];
+        row.style.opacity = '0.55';
+        if (isHostView) row.classList.add('empty-seat');
       }
 
       const team = document.createElement('span');
@@ -184,6 +194,32 @@ const App = (() => {
       team.textContent = (i % 2 === 0) ? 'TEAM ★' : 'TEAM ◆';
 
       row.append(dot, nameEl, roleEl, team);
+
+      // Host-only controls per seat
+      if (isHostView && !p) {
+        if (isBotSeat) {
+          const rm = document.createElement('button');
+          rm.className = 'seat-action';
+          rm.textContent = '✕ verwijder bot';
+          rm.onclick = (e) => {
+            e.stopPropagation();
+            state.botSeats.delete(i);
+            renderLobby();
+          };
+          row.appendChild(rm);
+        } else {
+          const add = document.createElement('button');
+          add.className = 'seat-action';
+          add.textContent = '+ bot';
+          add.onclick = (e) => {
+            e.stopPropagation();
+            state.botSeats.add(i);
+            renderLobby();
+          };
+          row.appendChild(add);
+        }
+      }
+
       container.appendChild(row);
     }
   }
@@ -255,15 +291,16 @@ const App = (() => {
     const players = state.lobby.players.slice(0, 4);
     if (players.length === 0) return;
 
-    // Assign seats: host = seat 0, others fill in order
+    // Assign seats: humans first (in join order), then explicit bots, then auto-fill
     const playerInfos = [];
     const seatMapping = {};
+    const botNames = ['Kapitein Bot', 'Stuurman Bot', 'Bootsman Bot', 'Matroos Bot'];
     for (let i = 0; i < 4; i++) {
       if (players[i]) {
         playerInfos.push({ id: players[i].peerId, name: players[i].name, isBot: false });
         seatMapping[players[i].peerId] = i;
       } else {
-        playerInfos.push({ id: `bot-${i}`, name: `Bot ${PLAYER_COLOR_NAMES[i]}`, isBot: true });
+        playerInfos.push({ id: `bot-${i}`, name: botNames[i], isBot: true });
       }
     }
     state.lobby.seatMapping = seatMapping;
@@ -280,16 +317,54 @@ const App = (() => {
      LOCAL MODE
      ============================================================ */
   function bindLocalSetup() {
+    // Segmented control for number of humans
+    document.querySelectorAll('#local-human-count button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = parseInt(btn.getAttribute('data-count'));
+        state.localHumanCount = n;
+        document.querySelectorAll('#local-human-count button').forEach(b => b.classList.toggle('active', b === btn));
+        applyLocalSeatVisibility();
+      });
+    });
+
     document.getElementById('local-start').addEventListener('click', () => {
+      const humanCount = state.localHumanCount;
       const inputs = document.querySelectorAll('#local-names input');
-      const names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Matroos ${i + 1}`);
-      const playerInfos = names.map((n, i) => ({ id: `local-${i}`, name: n, isBot: false }));
+      const playerInfos = [];
+      for (let i = 0; i < 4; i++) {
+        if (i < humanCount) {
+          const name = inputs[i].value.trim() || `Matroos ${i + 1}`;
+          playerInfos.push({ id: `local-${i}`, name, isBot: false });
+        } else {
+          const botNames = ['Kapitein Bot', 'Stuurman Bot', 'Bootsman Bot', 'Matroos Bot'];
+          playerInfos.push({ id: `bot-${i}`, name: botNames[i], isBot: true });
+        }
+      }
       state.gameState = Game.newGame(playerInfos, Date.now() & 0x7fffffff);
       state.mode = 'local';
       state.mySeat = 0; // doesn't matter; we always show current player
       state.showSeats = true;
       enterGameScreen();
+      scheduleBotsIfNeeded();
     });
+
+    applyLocalSeatVisibility();
+  }
+
+  function applyLocalSeatVisibility() {
+    const n = state.localHumanCount;
+    document.querySelectorAll('#local-names .local-row').forEach((row, i) => {
+      row.classList.toggle('bot-seat', i >= n);
+    });
+    const hint = document.getElementById('bot-hint');
+    if (hint) {
+      const bots = 4 - n;
+      hint.textContent = bots === 0
+        ? 'Vier mensen aan tafel — geen bots'
+        : bots === 1
+          ? '1 stoel wordt door een bot bemand'
+          : `${bots} stoelen worden door bots bemand`;
+    }
   }
 
   /* ============================================================
