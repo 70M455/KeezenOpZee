@@ -91,6 +91,16 @@
         <button class="btn btn-small" id="copy-link">🔗 Kopieer link</button>
       </div>
 
+      <div class="seat-picker lobby-only-host">
+        <label>Aantal spelers</label>
+        <div class="segmented" id="player-count">
+          <button type="button" data-count="2">2</button>
+          <button type="button" data-count="3">3</button>
+          <button type="button" data-count="4" class="active">4</button>
+        </div>
+        <small class="picker-hint" id="count-hint">Vier spelers — teamspel (geel + groen tegen rood + blauw)</small>
+      </div>
+
       <div class="players-list" id="lobby-players"></div>
 
       <div class="lobby-controls" id="lobby-controls">
@@ -123,13 +133,11 @@
       </header>
 
       <main class="game-main">
-        <aside class="player-panel player-panel-left" id="panel-left"></aside>
-
         <div class="board-wrapper">
           <div id="board-container"></div>
+          <div class="player-badges" id="player-badges"></div>
+          <div class="discard-stack" id="discard-stack"></div>
         </div>
-
-        <aside class="player-panel player-panel-right" id="panel-right"></aside>
       </main>
 
       <footer class="game-footer">

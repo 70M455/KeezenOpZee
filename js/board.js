@@ -123,7 +123,8 @@ const Board = (() => {
   /* ============================================================
      SVG BUILDER
      ============================================================ */
-  function buildBoard(containerEl) {
+  function buildBoard(containerEl, options = {}) {
+    const activeSeats = options.activeSeats || [0, 1, 2, 3];
     const svgNS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(svgNS, 'svg');
     svg.setAttribute('viewBox', `${-40} ${-40} ${SIZE + 80} ${SIZE + 80}`);
@@ -200,11 +201,10 @@ const Board = (() => {
       cell.setAttribute('id', `cell-track-${i}`);
 
       const startIdx = START_POS.indexOf(i);
-      if (startIdx >= 0) {
+      if (startIdx >= 0 && activeSeats.includes(startIdx)) {
         cell.classList.add(`cell-start-p${startIdx}`);
         cell.setAttribute('r', CELL_R + 3);
         root.appendChild(cell);
-        // Star marker for start
         const star = document.createElementNS(svgNS, 'text');
         star.setAttribute('x', x); star.setAttribute('y', y + 6);
         star.setAttribute('text-anchor', 'middle');
@@ -218,8 +218,9 @@ const Board = (() => {
       }
     }
 
-    /* Home cells — anchor symbol on every home slot */
+    /* Home cells — anchor symbol on every home slot (only active seats) */
     for (let p = 0; p < 4; p++) {
+      if (!activeSeats.includes(p)) continue;
       for (let s = 0; s < 4; s++) {
         const { x, y } = homeXY(p, s);
         const cell = document.createElementNS(svgNS, 'circle');
@@ -245,8 +246,9 @@ const Board = (() => {
       }
     }
 
-    /* Kennel cells */
+    /* Kennel cells (active seats only) */
     for (let p = 0; p < 4; p++) {
+      if (!activeSeats.includes(p)) continue;
       for (let s = 0; s < 4; s++) {
         const { x, y } = kennelXY(p, s);
         const cell = document.createElementNS(svgNS, 'circle');
@@ -262,8 +264,9 @@ const Board = (() => {
       }
     }
 
-    /* Boats (one group per piece) */
+    /* Boats (one group per piece) — only for active seats */
     for (let p = 0; p < 4; p++) {
+      if (!activeSeats.includes(p)) continue;
       for (let i = 0; i < 4; i++) {
         const boat = buildBoat(p);
         boat.setAttribute('id', `piece-${p}-${i}`);

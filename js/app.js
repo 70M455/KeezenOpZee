@@ -157,12 +157,45 @@ const App = (() => {
     state.lobby = {
       code,
       players: [{ peerId: 'host', name: hostName, isHost: true }],
+      activeSeats: [0, 1, 2, 3],
     };
+    state.activeSeats = [0, 1, 2, 3];
     showScreen('lobby');
     document.getElementById('lobby-code').textContent = code;
     document.getElementById('lobby-controls').classList.add('show');
     document.getElementById('lobby-waiting').classList.remove('show');
+    document.querySelector('.lobby-only-host')?.classList.remove('hide');
+    bindLobbyCountPicker();
     renderLobby();
+  }
+
+  function bindLobbyCountPicker() {
+    const buttons = document.querySelectorAll('#player-count button');
+    if (buttons.length === 0) return;
+    buttons.forEach(btn => {
+      btn.onclick = () => {
+        const n = parseInt(btn.getAttribute('data-count'));
+        const seats = n === 2 ? [0, 2] : n === 3 ? [0, 1, 2] : [0, 1, 2, 3];
+        state.activeSeats = seats;
+        state.lobby.activeSeats = seats;
+        // Prune bot markers and players beyond the new count
+        const newBotSeats = new Set();
+        for (const s of state.botSeats) {
+          if (seats.includes(s)) newBotSeats.add(s);
+        }
+        state.botSeats = newBotSeats;
+        state.lobby.players = state.lobby.players.slice(0, seats.length);
+        buttons.forEach(b => b.classList.toggle('active', b === btn));
+        const hint = document.getElementById('count-hint');
+        if (hint) {
+          if (n === 4) hint.textContent = 'Vier spelers — teamspel (geel + groen tegen rood + blauw)';
+          else if (n === 3) hint.textContent = 'Drie spelers — ieder voor zich';
+          else hint.textContent = 'Twee spelers — geel tegen groen (tegenover elkaar)';
+        }
+        renderLobby();
+        Network.broadcastLobby(state.lobby);
+      };
+    });
   }
 
   function bindLobby() {
@@ -189,68 +222,70 @@ const App = (() => {
     if (!lobby) return;
 
     const isHostView = state.mode === 'host';
+    const activeSeats = (lobby.activeSeats && lobby.activeSeats.length)
+      ? lobby.activeSeats
+      : [0, 1, 2, 3];
+    const teamMode = activeSeats.length === 4;
 
-    for (let i = 0; i < 4; i++) {
+    // Show the player-count picker only for host
+    const picker = document.querySelector('.lobby-only-host');
+    if (picker) picker.style.display = isHostView ? '' : 'none';
+
+    activeSeats.forEach((seatIdx, posInLobby) => {
       const row = document.createElement('div');
       row.className = 'player-row';
       const dot = document.createElement('span');
       dot.className = 'color-dot';
-      dot.setAttribute('data-color', ['yellow', 'red', 'green', 'blue'][i]);
+      dot.setAttribute('data-color', ['yellow', 'red', 'green', 'blue'][seatIdx]);
       const nameEl = document.createElement('span');
       nameEl.className = 'player-name';
       const roleEl = document.createElement('span');
       roleEl.className = 'player-role';
 
-      const p = lobby.players[i];
-      const isBotSeat = state.botSeats && state.botSeats.has(i);
+      const p = lobby.players[posInLobby];
+      const isBotSeat = state.botSeats && state.botSeats.has(seatIdx);
 
       if (p) {
         nameEl.textContent = p.name + (p.isHost ? ' ⚓' : '');
-        roleEl.textContent = PLAYER_COLOR_NAMES[i];
+        roleEl.textContent = PLAYER_COLOR_NAMES[seatIdx];
       } else if (isBotSeat) {
         nameEl.textContent = '🤖 Bot';
-        roleEl.textContent = PLAYER_COLOR_NAMES[i];
+        roleEl.textContent = PLAYER_COLOR_NAMES[seatIdx];
         row.style.opacity = '0.85';
       } else {
         nameEl.textContent = '— wachten op speler —';
-        roleEl.textContent = PLAYER_COLOR_NAMES[i];
+        roleEl.textContent = PLAYER_COLOR_NAMES[seatIdx];
         row.style.opacity = '0.55';
         if (isHostView) row.classList.add('empty-seat');
       }
 
-      const team = document.createElement('span');
-      team.className = 'team-badge';
-      team.textContent = (i % 2 === 0) ? 'TEAM ★' : 'TEAM ◆';
+      row.append(dot, nameEl, roleEl);
 
-      row.append(dot, nameEl, roleEl, team);
+      if (teamMode) {
+        const team = document.createElement('span');
+        team.className = 'team-badge';
+        team.textContent = (seatIdx % 2 === 0) ? 'TEAM ★' : 'TEAM ◆';
+        row.append(team);
+      }
 
-      // Host-only controls per seat
       if (isHostView && !p) {
         if (isBotSeat) {
           const rm = document.createElement('button');
           rm.className = 'seat-action';
           rm.textContent = '✕ verwijder bot';
-          rm.onclick = (e) => {
-            e.stopPropagation();
-            state.botSeats.delete(i);
-            renderLobby();
-          };
+          rm.onclick = (e) => { e.stopPropagation(); state.botSeats.delete(seatIdx); renderLobby(); };
           row.appendChild(rm);
         } else {
           const add = document.createElement('button');
           add.className = 'seat-action';
           add.textContent = '+ bot';
-          add.onclick = (e) => {
-            e.stopPropagation();
-            state.botSeats.add(i);
-            renderLobby();
-          };
+          add.onclick = (e) => { e.stopPropagation(); state.botSeats.add(seatIdx); renderLobby(); };
           row.appendChild(add);
         }
       }
 
       container.appendChild(row);
-    }
+    });
   }
 
   /* ============================================================
@@ -316,25 +351,37 @@ const App = (() => {
      HOST: START GAME
      ============================================================ */
   function startHostedGame() {
-    const players = state.lobby.players.slice(0, 4);
-    if (players.length === 0) return;
+    const activeSeats = (state.lobby.activeSeats && state.lobby.activeSeats.length)
+      ? state.lobby.activeSeats
+      : [0, 1, 2, 3];
+    const lobbyPlayers = state.lobby.players.slice(0, activeSeats.length);
 
-    // Assign seats: humans first (in join order), then explicit bots, then auto-fill
-    const playerInfos = [];
+    // Each lobby player position -> board seat (in activeSeats order)
+    const playerInfos = [null, null, null, null];
     const seatMapping = {};
     const botNames = ['Kapitein Bot', 'Stuurman Bot', 'Bootsman Bot', 'Matroos Bot'];
-    for (let i = 0; i < 4; i++) {
-      if (players[i]) {
-        playerInfos.push({ id: players[i].peerId, name: players[i].name, isBot: false });
-        seatMapping[players[i].peerId] = i;
-      } else {
-        playerInfos.push({ id: `bot-${i}`, name: botNames[i], isBot: true });
-      }
-    }
-    state.lobby.seatMapping = seatMapping;
 
-    state.gameState = Game.newGame(playerInfos, Date.now() & 0x7fffffff);
-    state.mySeat = 0;
+    activeSeats.forEach((seatIdx, posInLobby) => {
+      const p = lobbyPlayers[posInLobby];
+      if (p) {
+        playerInfos[seatIdx] = { id: p.peerId, name: p.name, isBot: false };
+        seatMapping[p.peerId] = seatIdx;
+      } else {
+        playerInfos[seatIdx] = { id: `bot-${seatIdx}`, name: botNames[seatIdx], isBot: true };
+      }
+    });
+    // Inactive seats get placeholder bots (won't play)
+    for (let i = 0; i < 4; i++) {
+      if (!playerInfos[i]) playerInfos[i] = { id: `inactive-${i}`, name: '—', isBot: true };
+    }
+
+    state.lobby.seatMapping = seatMapping;
+    state.gameState = Game.newGame(playerInfos, Date.now() & 0x7fffffff, {
+      activeSeats,
+      teamMode: activeSeats.length === 4,
+    });
+    state.activeSeats = activeSeats;
+    state.mySeat = activeSeats[0];
 
     Network.broadcastGameStart(state.gameState, seatMapping);
     enterGameScreen();
@@ -348,12 +395,27 @@ const App = (() => {
   function enterGameScreen() {
     showScreen('game');
     const container = document.getElementById('board-container');
-    state.svg = Board.buildBoard(container);
-
-    // Attach piece+cell clicks
+    const gs = state.gameState;
+    const activeSeats = gs?.activeSeats || state.activeSeats || [0, 1, 2, 3];
+    state.activeSeats = activeSeats;
+    state.svg = Board.buildBoard(container, { activeSeats });
     state.svg.addEventListener('click', e => handleBoardClick(e));
-
+    lastRound = null;
+    fitBoardWrap();
+    if (!state._resizeBound) {
+      window.addEventListener('resize', fitBoardWrap);
+      state._resizeBound = true;
+    }
     renderGame();
+  }
+
+  function fitBoardWrap() {
+    const main = document.querySelector('.game-main');
+    const wrap = document.querySelector('.board-wrapper');
+    if (!main || !wrap) return;
+    const size = Math.min(main.clientWidth, main.clientHeight);
+    wrap.style.width = size + 'px';
+    wrap.style.height = size + 'px';
   }
 
   function isMyTurn() {
@@ -377,6 +439,7 @@ const App = (() => {
     renderHeader();
     renderOpponents();
     renderHand();
+    renderDiscard();
     refreshHighlights();
     refreshPreview();
     maybePlayTurnSound();
@@ -385,6 +448,22 @@ const App = (() => {
     if (gs.phase === 'finished') {
       showWinModal();
     }
+  }
+
+  function renderDiscard() {
+    const gs = state.gameState;
+    const container = document.getElementById('discard-stack');
+    if (!container) return;
+    container.innerHTML = '';
+    const recent = (gs.discard || []).slice(-3);
+    recent.forEach((card, i) => {
+      const el = makeCardEl(card);
+      el.classList.add('discard-card');
+      el.style.transform = `rotate(${(i - 1) * 6}deg) translateY(${-i * 4}px)`;
+      el.style.zIndex = i;
+      el.style.cursor = 'default';
+      container.appendChild(el);
+    });
   }
 
   function maybeShowIntermezzo() {
@@ -458,61 +537,46 @@ const App = (() => {
 
   function renderOpponents() {
     const myIdx = viewingSeat();
-    const panelLeft = document.getElementById('panel-left');
-    const panelRight = document.getElementById('panel-right');
-    panelLeft.innerHTML = '';
-    panelRight.innerHTML = '';
-
+    const container = document.getElementById('player-badges');
+    if (!container) return;
+    container.innerHTML = '';
     const gs = state.gameState;
-    // Opponents in order around the table (clockwise from me)
-    const opp = [
-      (myIdx + 1) % 4,  // right
-      (myIdx + 2) % 4,  // across
-      (myIdx + 3) % 4,  // left
-    ];
+    const active = (gs.activeSeats || [0, 1, 2, 3]);
+    const colorClass = ['yellow', 'red', 'green', 'blue'];
 
-    opp.forEach((idx, i) => {
+    for (const idx of active) {
+      if (idx === myIdx) continue;
+      // Relative position around the table after rotation (bottom = me)
+      const rel = (idx - myIdx + 4) % 4;   // 1=right, 2=top, 3=left
+      const posClass = rel === 1 ? 'pos-right' : rel === 2 ? 'pos-top' : 'pos-left';
       const p = gs.players[idx];
-      const card = document.createElement('div');
-      card.className = 'opponent-card';
-      if (gs.currentPlayerIdx === idx) card.classList.add('active');
 
-      const nameRow = document.createElement('div');
-      nameRow.className = 'name-row';
+      const badge = document.createElement('div');
+      badge.className = `player-badge ${posClass}`;
+      if (gs.currentPlayerIdx === idx) badge.classList.add('active');
+
       const dot = document.createElement('span');
       dot.className = 'color-dot';
-      dot.setAttribute('data-color', ['yellow', 'red', 'green', 'blue'][idx]);
-      nameRow.appendChild(dot);
-      const nameEl = document.createElement('span');
-      nameEl.textContent = p.name + (p.isBot ? ' 🤖' : '');
-      nameRow.appendChild(nameEl);
-      const team = document.createElement('span');
-      team.className = 'team-badge';
-      team.textContent = (idx % 2 === 0) ? '★' : '◆';
-      nameRow.appendChild(team);
-      card.appendChild(nameRow);
+      dot.setAttribute('data-color', colorClass[idx]);
+      badge.appendChild(dot);
 
-      const backs = document.createElement('div');
-      backs.className = 'cards-back';
-      for (let c = 0; c < p.hand.length; c++) {
-        const back = document.createElement('div');
-        back.className = 'card-back';
-        backs.appendChild(back);
-      }
-      card.appendChild(backs);
+      const info = document.createElement('div');
+      info.className = 'badge-info';
+      const name = document.createElement('div');
+      name.className = 'badge-name';
+      name.textContent = p.name + (p.isBot ? ' 🤖' : '');
+      info.appendChild(name);
 
       const status = document.createElement('div');
-      status.className = 'status';
+      status.className = 'badge-status';
       if (p.passed) status.textContent = '🚫 gepast';
-      else if (p.hand.length === 0) status.textContent = '— geen kaarten —';
-      else status.textContent = `${p.hand.length} kaarten`;
-      card.appendChild(status);
+      else if (p.hand.length === 0) status.textContent = 'geen kaarten';
+      else status.textContent = `🃏 ${p.hand.length}`;
+      info.appendChild(status);
+      badge.appendChild(info);
 
-      // Place card in correct panel: across = left or right top
-      // Simple approach: i=0 right panel top, i=1 right panel bottom, i=2 left panel top
-      if (i === 0 || i === 1) panelRight.appendChild(card);
-      else panelLeft.appendChild(card);
-    });
+      container.appendChild(badge);
+    }
   }
 
   function renderHand() {
