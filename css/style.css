@@ -449,13 +449,13 @@ html, body {
 }
 
 .room-code {
-  font-family: var(--font-display);
-  font-size: 42px;
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-size: 40px;
   font-weight: 700;
-  letter-spacing: 8px;
+  letter-spacing: 10px;
   color: var(--ink);
-  margin: 8px 0;
-  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.5);
+  margin: 8px 0 8px 10px;             /* extra left margin balances the letter-spacing */
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .players-list {
