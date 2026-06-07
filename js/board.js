@@ -394,6 +394,46 @@ const Board = (() => {
     });
   }
 
+  /* Show a sequence of step numbers (1, 2, 3, ...) on cells of a path */
+  function drawPathNumbers(svg, playerIdx, path) {
+    clearPathNumbers(svg);
+    if (!path || path.length === 0) return;
+    const root = svg.querySelector('#board-root') || svg;
+    const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    layer.setAttribute('id', 'path-numbers');
+    for (let i = 0; i < path.length; i++) {
+      const loc = path[i];
+      const xy = pieceXY(loc, playerIdx);
+      // Bubble
+      const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circ.setAttribute('cx', xy.x);
+      circ.setAttribute('cy', xy.y);
+      circ.setAttribute('r', 10);
+      circ.setAttribute('fill', '#fff4a0');
+      circ.setAttribute('stroke', '#5a4023');
+      circ.setAttribute('stroke-width', '1.5');
+      circ.setAttribute('opacity', '0.9');
+      layer.appendChild(circ);
+      // Number
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', xy.x);
+      text.setAttribute('y', xy.y + 4);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-family', 'Cinzel, serif');
+      text.setAttribute('font-size', '13');
+      text.setAttribute('font-weight', '700');
+      text.setAttribute('fill', '#2a1810');
+      text.textContent = (i + 1);
+      layer.appendChild(text);
+    }
+    root.appendChild(layer);
+  }
+
+  function clearPathNumbers(svg) {
+    const el = svg && svg.querySelector('#path-numbers');
+    if (el) el.remove();
+  }
+
   return {
     SIZE, CENTER, START_POS, TRACK_LEN,
     buildBoard,
@@ -405,5 +445,7 @@ const Board = (() => {
     trackXY, homeXY, kennelXY, pieceXY,
     rotationFor,
     setViewRotation,
+    drawPathNumbers,
+    clearPathNumbers,
   };
 })();

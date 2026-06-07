@@ -1024,9 +1024,68 @@ html, body {
   text-align: center;
 }
 
-.win-emblem {
+.win-emblem,
+.intermezzo-emblem {
   font-size: 72px;
   margin-bottom: 8px;
+}
+
+.intermezzo-card {
+  text-align: center;
+}
+.intermezzo-text {
+  font-style: italic;
+  font-size: 16px;
+  margin: 8px 0;
+  color: var(--wood-dark);
+}
+.rank-num {
+  font-weight: 700;
+  font-family: var(--font-heading);
+  min-width: 26px;
+  text-align: right;
+}
+.rank-stats {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--wood-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking {
+  margin: 16px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  max-width: 320px;
+}
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  border: 1px solid var(--wood-mid);
+}
+.rank-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--wood-dark);
+  display: inline-block;
+}
+.rank-dot[data-color="yellow"] { background: radial-gradient(circle at 30% 30%, #ffd700, var(--p0-dark)); }
+.rank-dot[data-color="red"]    { background: radial-gradient(circle at 30% 30%, #e74c3c, var(--p1-dark)); }
+.rank-dot[data-color="green"]  { background: radial-gradient(circle at 30% 30%, #3eb371, var(--p2-dark)); }
+.rank-dot[data-color="blue"]   { background: radial-gradient(circle at 30% 30%, #3a8fd6, var(--p3-dark)); }
+
+/* Step-number bubbles on the path preview should NOT rotate with the board */
+#path-numbers circle {
+  pointer-events: none;
+}
+#path-numbers text {
+  pointer-events: none;
 }
 
 /* ============================================================

@@ -7,6 +7,37 @@ const App = (() => {
   const PLAYER_COLOR_HEX  = ['#e8c547', '#c0392b', '#2e8b57', '#2b6cb0'];
   const TEAM_NAMES = ['Team Zon & Diepzee', 'Team Vuurtoren & Oceaan'];
 
+  let audioCtx = null;
+  function playTurnSound() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      // Tiny two-note "ding" — bell-like
+      const now = audioCtx.currentTime;
+      [880, 1320].forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, now + i * 0.12);
+        gain.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.45);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(now + i * 0.12);
+        osc.stop(now + i * 0.12 + 0.5);
+      });
+    } catch (e) { /* audio not available */ }
+  }
+
+  let lastTurnSeat = null;
+  function maybePlayTurnSound() {
+    if (!state.gameState) return;
+    const cur = state.gameState.currentPlayerIdx;
+    if (cur === state.mySeat && cur !== lastTurnSeat) {
+      playTurnSound();
+    }
+    lastTurnSeat = cur;
+  }
+
   const state = {
     mode: 'menu',                   // 'menu' | 'host' | 'client'
     mySeat: null,                   // 0..3
@@ -335,6 +366,8 @@ const App = (() => {
     return state.mySeat != null ? state.mySeat : 0;
   }
 
+  let lastRound = null;
+
   function renderGame() {
     if (!state.gameState) return;
     const gs = state.gameState;
@@ -346,10 +379,68 @@ const App = (() => {
     renderHand();
     refreshHighlights();
     refreshPreview();
+    maybePlayTurnSound();
+    maybeShowIntermezzo();
 
     if (gs.phase === 'finished') {
       showWinModal();
     }
+  }
+
+  function maybeShowIntermezzo() {
+    const gs = state.gameState;
+    if (!gs) return;
+    if (lastRound != null && lastRound !== gs.roundNumber) {
+      showIntermezzo(gs, lastRound, gs.roundNumber);
+    }
+    lastRound = gs.roundNumber;
+  }
+
+  function showIntermezzo(gs, prevRound, newRound) {
+    const newDeal = (prevRound === 3 && newRound === 1);
+    const titleEl = document.getElementById('intermezzo-title');
+    const bodyEl = document.getElementById('intermezzo-body');
+    const embEl = document.getElementById('intermezzo-emblem');
+
+    if (newDeal) {
+      embEl.textContent = '🌊';
+      titleEl.textContent = 'Tussenstand';
+      bodyEl.innerHTML = buildStandingsHtml(gs);
+    } else {
+      embEl.textContent = '📜';
+      titleEl.textContent = `Ronde ${newRound}`;
+      bodyEl.innerHTML = `<p class="intermezzo-text">Nieuwe kaarten worden uitgedeeld...</p>` + buildStandingsHtml(gs);
+    }
+
+    document.getElementById('modal-intermezzo').classList.add('show');
+  }
+
+  function buildStandingsHtml(gs) {
+    const active = (gs.activeSeats || [0, 1, 2, 3]).slice();
+    // Sort: most pieces home → fewest in kennel → seat order
+    active.sort((a, b) => {
+      const pa = gs.players[a], pb = gs.players[b];
+      const ha = pa.pieces.filter(p => p.location.type === 'home').length;
+      const hb = pb.pieces.filter(p => p.location.type === 'home').length;
+      if (hb !== ha) return hb - ha;
+      const ka = pa.pieces.filter(p => p.location.type === 'kennel').length;
+      const kb = pb.pieces.filter(p => p.location.type === 'kennel').length;
+      return ka - kb;
+    });
+    const colorClass = ['yellow', 'red', 'green', 'blue'];
+    const rows = active.map((seat, i) => {
+      const p = gs.players[seat];
+      const home = p.pieces.filter(x => x.location.type === 'home').length;
+      const track = p.pieces.filter(x => x.location.type === 'track').length;
+      const kennel = p.pieces.filter(x => x.location.type === 'kennel').length;
+      return `<div class="rank-row">
+        <span class="rank-num">${i + 1}.</span>
+        <span class="rank-dot" data-color="${colorClass[seat]}"></span>
+        <strong>${p.name}</strong>
+        <span class="rank-stats">🏠 ${home} · ⛵ ${track} · ⚓ ${kennel}</span>
+      </div>`;
+    }).join('');
+    return `<div class="ranking">${rows}</div>`;
   }
 
   function renderHeader() {
@@ -781,11 +872,11 @@ const App = (() => {
 
   function drawPreview(move) {
     if (!state.svg) return;
+    Board.clearPathNumbers(state.svg);
     const root = state.svg.querySelector('#board-root') || state.svg;
     const mine = move.pieceRef;
 
     if (move.type === 'swap') {
-      // Show both boats glowing
       const a = state.svg.querySelector(`#piece-${mine.playerIdx}-${mine.pieceIdx}`);
       const b = state.svg.querySelector(`#piece-${move.swapWith.playerIdx}-${move.swapWith.pieceIdx}`);
       if (a) a.classList.add('selected');
@@ -793,7 +884,12 @@ const App = (() => {
       return;
     }
 
-    // Clone the boat at the destination as a translucent ghost
+    // Draw a numbered breadcrumb trail along the path (1, 2, 3, ...)
+    if (move.path && move.path.length > 0) {
+      Board.drawPathNumbers(state.svg, mine.playerIdx, move.path);
+    }
+
+    // Translucent ghost boat at the destination
     const original = state.svg.querySelector(`#piece-${mine.playerIdx}-${mine.pieceIdx}`);
     if (!original) return;
     const ghost = original.cloneNode(true);
@@ -806,7 +902,6 @@ const App = (() => {
     ghost.setAttribute('transform', `translate(${xy.x}, ${xy.y}) rotate(${rot})`);
     ghost.setAttribute('pointer-events', 'none');
     root.appendChild(ghost);
-    // Highlight the original so user sees where the ship is leaving from
     original.classList.add('selected');
   }
 
@@ -814,6 +909,7 @@ const App = (() => {
     if (!state.svg) return;
     const ghost = state.svg.querySelector('#piece-preview');
     if (ghost) ghost.remove();
+    Board.clearPathNumbers(state.svg);
   }
 
   function refreshPreview() {
@@ -1001,11 +1097,17 @@ const App = (() => {
      ============================================================ */
   function scheduleBotsIfNeeded() {
     if (state.mode === 'client') return; // host runs bots
-    setTimeout(playBotIfNeeded, 700);
+    // 5 second pause before & after each bot — humans need time to read what happened
+    setTimeout(playBotIfNeeded, 5000);
   }
 
   function playBotIfNeeded() {
     if (!state.gameState || state.gameState.phase !== 'playing') return;
+    // Hold off bots while the intermezzo modal is open — let the player(s) acknowledge first
+    if (document.getElementById('modal-intermezzo').classList.contains('show')) {
+      setTimeout(playBotIfNeeded, 1500);
+      return;
+    }
     const gs = state.gameState;
     const cur = gs.players[gs.currentPlayerIdx];
     if (!cur.isBot) return;
@@ -1059,8 +1161,13 @@ const App = (() => {
     });
     document.querySelectorAll('.modal-overlay').forEach(ov => {
       ov.addEventListener('click', e => {
-        if (e.target === ov) ov.classList.remove('show');
+        if (e.target === ov && ov.id !== 'modal-intermezzo' && ov.id !== 'modal-win') {
+          ov.classList.remove('show');
+        }
       });
+    });
+    document.getElementById('intermezzo-continue').addEventListener('click', () => {
+      document.getElementById('modal-intermezzo').classList.remove('show');
     });
     document.getElementById('win-back').addEventListener('click', () => {
       document.getElementById('modal-win').classList.remove('show');
@@ -1073,9 +1180,29 @@ const App = (() => {
   }
 
   function showWinModal() {
-    const team = state.gameState.winnerTeam;
-    document.getElementById('win-title').textContent = '🏆 ' + TEAM_NAMES[team] + ' wint!';
-    document.getElementById('win-subtitle').textContent = 'Alle schepen veilig binnen — wat een reis!';
+    const gs = state.gameState;
+    const order = gs.finishOrder || [];
+    const trophy = ['🥇', '🥈', '🥉', '🎖'];
+
+    let title;
+    if (gs.teamMode && gs.winnerTeam != null) {
+      title = '🏆 ' + TEAM_NAMES[gs.winnerTeam] + ' wint!';
+    } else if (order.length > 0) {
+      const winner = gs.players[order[0]];
+      title = '🏆 ' + winner.name + ' wint!';
+    } else {
+      title = '🏆 Spel afgelopen';
+    }
+    document.getElementById('win-title').textContent = title;
+
+    const lines = order.map((seat, i) => {
+      const p = gs.players[seat];
+      const dot = `<span class="rank-dot" data-color="${['yellow','red','green','blue'][seat]}"></span>`;
+      return `<div class="rank-row">${trophy[i] || (i + 1) + '.'} ${dot}<strong>${p.name}</strong></div>`;
+    }).join('');
+    document.getElementById('win-subtitle').innerHTML =
+      `<div class="ranking">${lines}</div><p>Alle schepen binnen — wat een reis!</p>`;
+
     document.getElementById('modal-win').classList.add('show');
   }
 
