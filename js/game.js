@@ -51,31 +51,23 @@ const Game = (() => {
 
   /* ------------------------------------------------------------
      Initial state
+     activeSeats: optional array of seat indices in use (e.g., [0,2] for 2-player)
+                  If omitted, all 4 seats are active.
      ------------------------------------------------------------ */
-  function newGame(playerInfos /* [{id, name, isBot}] */, seed) {
-    const players = playerInfos.slice(0, 4).map((info, idx) => ({
-      idx,
-      id: info.id,
-      name: info.name,
-      isBot: !!info.isBot,
-      team: idx % 2,                 // P0+P2 vs P1+P3
-      hand: [],
-      pieces: Array.from({ length: NUM_PIECES }, (_, i) => ({
-        index: i,
-        location: { type: 'kennel', slot: i },
-        hasLeftStart: false,
-      })),
-      passed: false,                  // passed this round (cards discarded)
-    }));
+  function newGame(playerInfos /* [{id,name,isBot,seat?}] */, seed, options = {}) {
+    const activeSeats = options.activeSeats || [0, 1, 2, 3];
+    const teamMode = options.teamMode !== undefined ? options.teamMode : (activeSeats.length === 4);
 
-    // Fill missing seats with bots
-    while (players.length < 4) {
-      const idx = players.length;
+    const players = [];
+    for (let idx = 0; idx < 4; idx++) {
+      const info = playerInfos[idx];
+      const isActive = activeSeats.includes(idx);
       players.push({
         idx,
-        id: `bot-${idx}`,
-        name: ['Kapitein Bot', 'Stuurman Bot', 'Bootsman Bot', 'Matroos Bot'][idx],
-        isBot: true,
+        id: info ? info.id : `seat-${idx}`,
+        name: info ? info.name : `Stoel ${idx + 1}`,
+        isBot: info ? !!info.isBot : false,
+        active: isActive,
         team: idx % 2,
         hand: [],
         pieces: Array.from({ length: NUM_PIECES }, (_, i) => ({
@@ -89,14 +81,17 @@ const Game = (() => {
 
     const state = {
       players,
-      currentPlayerIdx: 0,
-      dealerIdx: 0,
-      roundNumber: 1,            // 1, 2, 3 (then redeal)
+      activeSeats,
+      teamMode,
+      currentPlayerIdx: activeSeats[0],
+      dealerIdx: activeSeats[0],
+      roundNumber: 1,
       deck: [],
       discard: [],
       seed: seed || Math.floor(Math.random() * 1e9),
-      phase: 'playing',          // 'playing' | 'finished'
+      phase: 'playing',
       winnerTeam: null,
+      finishOrder: [],          // seat indices in order of finishing
       log: [],
     };
 
@@ -109,7 +104,6 @@ const Game = (() => {
      ------------------------------------------------------------ */
   function dealRound(state, roundNumber) {
     const cardCount = ROUND_CARD_COUNT[roundNumber - 1];
-    // For round 1, create a new deck and shuffle
     if (roundNumber === 1) {
       state.deck = shuffle(makeDeck(), makeRng(state.seed + state.dealerIdx * 1000));
       state.discard = [];
@@ -118,17 +112,19 @@ const Game = (() => {
       p.hand = [];
       p.passed = false;
     }
-    // Deal starting from dealer + 1
+    const active = state.activeSeats || [0, 1, 2, 3];
+    // Deal starting from seat after dealer (only to active seats, in seat order)
+    const startIdx = active.indexOf(state.dealerIdx);
     for (let i = 0; i < cardCount; i++) {
-      for (let j = 0; j < 4; j++) {
-        const pIdx = (state.dealerIdx + 1 + j) % 4;
+      for (let j = 0; j < active.length; j++) {
+        const pIdx = active[(startIdx + 1 + j) % active.length];
         if (state.deck.length > 0) {
           state.players[pIdx].hand.push(state.deck.pop());
         }
       }
     }
     state.roundNumber = roundNumber;
-    state.currentPlayerIdx = (state.dealerIdx + 1) % 4;
+    state.currentPlayerIdx = active[(startIdx + 1) % active.length];
     state.log.push(`📜 Ronde ${roundNumber} — kaarten gedeeld`);
   }
 
@@ -186,86 +182,110 @@ const Game = (() => {
     return occupant.playerIdx === owner;
   }
 
-  /* Simulate moving a piece forward N steps; returns final location or null if blocked */
+  /* Simulate moving a piece forward N steps; returns ARRAY of possible final
+     destinations (multiple when the path can choose between entering home or
+     continuing along the track). Each entry: { location, hasLeftStart, path }.
+     Self-capture is allowed: landing on own piece is OK (caller will capture). */
   function simulateForward(state, playerIdx, piece, steps) {
-    if (steps <= 0) return null;
-    if (piece.location.type === 'kennel') return null;
+    if (steps <= 0) return [];
+    if (piece.location.type === 'kennel') return [];
 
-    let current = { ...piece.location };
-    let hasLeftStart = piece.hasLeftStart;
     const startPos = START_POS[playerIdx];
+    let frontier = [{ loc: { ...piece.location }, hasLeftStart: piece.hasLeftStart, path: [] }];
 
     for (let i = 0; i < steps; i++) {
-      // Determine next position
-      let next;
-      if (current.type === 'track') {
-        // If we're at the player's own startPos and have already left it, branch logic
-        // Specifically: when going from start-1 (i.e., position startPos + TRACK_LEN - 1 mod TRACK_LEN)
-        // to startPos, enter home if hasLeftStart.
-        const nextTrackPos = (current.pos + 1) % TRACK_LEN;
-        if (nextTrackPos === startPos && hasLeftStart) {
-          next = { type: 'home', slot: 0 };
-        } else {
-          next = { type: 'track', pos: nextTrackPos };
+      const isFinal = (i === steps - 1);
+      const next = [];
+      for (const node of frontier) {
+        for (const opt of stepForwardOptions(state, playerIdx, node.loc, node.hasLeftStart, isFinal)) {
+          next.push({
+            loc: opt.loc,
+            hasLeftStart: opt.hasLeftStart,
+            path: node.path.concat([opt.loc]),
+          });
         }
-        // mark as left start
-        if (current.pos === startPos) {
-          hasLeftStart = true;
-        }
-      } else if (current.type === 'home') {
-        if (current.slot >= HOME_LEN - 1) return null;
-        next = { type: 'home', slot: current.slot + 1 };
-      } else {
-        return null;
       }
-
-      // Check blockades and pass-through rules
-      if (next.type === 'track') {
-        if (isStartBlockade(state, next.pos)) return null;
-      }
-
-      // Final step: cannot land on own piece
-      if (i === steps - 1) {
-        if (next.type === 'track') {
-          const occ = trackPieceAt(state, next.pos);
-          if (occ && occ.playerIdx === playerIdx) return null;
-        } else if (next.type === 'home') {
-          const occ = homePieceAt(state, playerIdx, next.slot);
-          if (occ) return null;
-        }
-      } else {
-        // Intermediate: can't pass through own pieces in home stretch (cannot pass own piece in home)
-        if (next.type === 'home') {
-          const occ = homePieceAt(state, playerIdx, next.slot);
-          if (occ) return null;
-        }
-        // Can pass through other pieces on track (except start blockades, handled above)
-      }
-
-      current = next;
+      frontier = next;
+      if (frontier.length === 0) break;
     }
 
-    return { location: current, hasLeftStart };
+    // Deduplicate by destination
+    const seen = new Set();
+    const results = [];
+    for (const f of frontier) {
+      const key = `${f.loc.type}:${f.loc.type === 'track' ? f.loc.pos : f.loc.slot}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({ location: f.loc, hasLeftStart: f.hasLeftStart, path: f.path });
+    }
+    return results;
   }
 
-  /* Simulate moving piece backward 4 (track only) */
+  /* All next-step options from current (loc, hasLeftStart). Final step has different rules. */
+  function stepForwardOptions(state, playerIdx, current, hasLeftStart, isFinal) {
+    const startPos = START_POS[playerIdx];
+    const out = [];
+
+    if (current.type === 'track') {
+      const nextTrack = (current.pos + 1) % TRACK_LEN;
+      const newHasLeft = (current.pos === startPos) ? true : hasLeftStart;
+
+      // Option A: enter home if we're about to step onto our own start and we've left it before
+      if (nextTrack === startPos && hasLeftStart) {
+        const homeOpt = { type: 'home', slot: 0 };
+        if (canOccupy(state, playerIdx, homeOpt, isFinal)) {
+          out.push({ loc: homeOpt, hasLeftStart });
+        }
+      }
+
+      // Option B: stay on the track and continue around (always available — pass home and lap again)
+      const trackOpt = { type: 'track', pos: nextTrack };
+      if (canOccupy(state, playerIdx, trackOpt, isFinal)) {
+        out.push({ loc: trackOpt, hasLeftStart: newHasLeft });
+      }
+    } else if (current.type === 'home') {
+      if (current.slot < HOME_LEN - 1) {
+        const homeOpt = { type: 'home', slot: current.slot + 1 };
+        if (canOccupy(state, playerIdx, homeOpt, isFinal)) {
+          out.push({ loc: homeOpt, hasLeftStart });
+        }
+      }
+      // Cannot leave home back to track
+    }
+
+    return out;
+  }
+
+  /* Can a piece end its step at this location? (final or intermediate)
+     - Start blockades block all (passing or landing)
+     - Home cells block if occupied (intermediate AND final — can't pass own pieces in home)
+     - Track final cell: own piece OK (self-capture), opp OK (capture), start blockade NOT
+     - Track intermediate: anything except start blockade */
+  function canOccupy(state, playerIdx, loc, isFinal) {
+    if (loc.type === 'track') {
+      if (isStartBlockade(state, loc.pos)) return false;
+      // Intermediate / final on regular track is fine — captures resolved by applyMove
+      return true;
+    }
+    if (loc.type === 'home') {
+      const occ = homePieceAt(state, playerIdx, loc.slot);
+      return !occ;  // home is exclusive
+    }
+    return false;
+  }
+
+  /* Simulate moving piece backward N (track only). Returns array of 0/1 destinations. */
   function simulateBackward(state, playerIdx, piece, steps) {
-    if (piece.location.type !== 'track') return null;
+    if (piece.location.type !== 'track') return [];
     let pos = piece.location.pos;
     let hasLeftStart = piece.hasLeftStart;
     for (let i = 0; i < steps; i++) {
       pos = (pos - 1 + TRACK_LEN) % TRACK_LEN;
-      // Cannot pass start blockade (its own player still wins)
-      if (isStartBlockade(state, pos) && i < steps - 1) return null;
-      if (i === steps - 1) {
-        const occ = trackPieceAt(state, pos);
-        if (occ && occ.playerIdx === playerIdx) return null;
-        if (isStartBlockade(state, pos)) return null;
-      }
+      if (isStartBlockade(state, pos)) return [];     // can't pass over a start blockade either
     }
-    // After backward move, mark hasLeftStart true if we moved past our start
+    // Self-capture allowed: own piece on final track cell is captured by applyMove
     if (pos !== START_POS[playerIdx]) hasLeftStart = true;
-    return { location: { type: 'track', pos }, hasLeftStart };
+    return [{ location: { type: 'track', pos }, hasLeftStart, path: [{ type: 'track', pos }] }];
   }
 
   /* ------------------------------------------------------------
@@ -300,20 +320,19 @@ const Game = (() => {
     const player = state.players[playerIdx];
     const startPos = START_POS[playerIdx];
 
-    // Determine teammate index for "play teammate's pieces when own are home"
+    // In team mode, once your pieces are all home you control your teammate's pieces.
     const allMyPiecesHome = player.pieces.every(p => p.location.type === 'home');
-    const effectivePlayerIdx = allMyPiecesHome ? (playerIdx + 2) % 4 : playerIdx;
-    const movePieces = allMyPiecesHome ? state.players[effectivePlayerIdx].pieces : player.pieces;
-    const teammateIdx = effectivePlayerIdx;
+    const teammateIdx = (state.teamMode && allMyPiecesHome) ? (playerIdx + 2) % 4 : playerIdx;
+    const movePieces = state.players[teammateIdx].pieces;
 
-    // Helper to add a forward move
+    // Helper to add a forward move (may produce multiple — home vs continue-track)
     const tryForward = (piece, steps) => {
-      const result = simulateForward(state, teammateIdx, piece, steps);
-      if (result) {
+      const results = simulateForward(state, teammateIdx, piece, steps);
+      for (const result of results) {
         moves.push({
           card, type: 'forward', steps,
           pieceRef: { playerIdx: teammateIdx, pieceIdx: piece.index },
-          dest: result.location, hasLeftStart: result.hasLeftStart,
+          dest: result.location, hasLeftStart: result.hasLeftStart, path: result.path,
         });
       }
     };
@@ -372,30 +391,25 @@ const Game = (() => {
         }
       }
     } else if (card.rank === '7') {
-      // Split 7 between 1 or 2 own pieces. We add ALL possible single moves of N where N=1..7.
-      // The full split is handled interactively (user selects pieces and splits).
-      // For the validity check (canPlay), we just need ANY way to spend 7 totally.
-      // For the actual move generation here, return the partial moves; UI handles iteration.
+      // Split 7 between 1 or 2 own pieces — generate all single-step moves of size 1..7
       for (const piece of movePieces.filter(p => p.location.type !== 'kennel')) {
         for (let steps = 1; steps <= 7; steps++) {
-          const r = simulateForward(state, teammateIdx, piece, steps);
-          if (r) {
+          for (const r of simulateForward(state, teammateIdx, piece, steps)) {
             moves.push({
               card, type: 'sevenStep', steps,
               pieceRef: { playerIdx: teammateIdx, pieceIdx: piece.index },
-              dest: r.location, hasLeftStart: r.hasLeftStart,
+              dest: r.location, hasLeftStart: r.hasLeftStart, path: r.path,
             });
           }
         }
       }
     } else if (card.rank === '4') {
       for (const piece of movePieces.filter(p => p.location.type === 'track')) {
-        const r = simulateBackward(state, teammateIdx, piece, 4);
-        if (r) {
+        for (const r of simulateBackward(state, teammateIdx, piece, 4)) {
           moves.push({
             card, type: 'backward', steps: 4,
             pieceRef: { playerIdx: teammateIdx, pieceIdx: piece.index },
-            dest: r.location, hasLeftStart: r.hasLeftStart,
+            dest: r.location, hasLeftStart: r.hasLeftStart, path: r.path,
           });
         }
       }
@@ -418,29 +432,29 @@ const Game = (() => {
     return getMovesForCard(state, playerIdx, card).length > 0;
   }
 
-  /* Can the player fully spend a 7? (split between 1-2 own pieces, total 7) */
+  /* Can the player fully spend a 7? Split must be over 1 or 2 DIFFERENT pieces.
+     Same piece may NOT be used in two stages. */
   function canSpendSeven(state, playerIdx) {
     const player = state.players[playerIdx];
     const allMyHome = player.pieces.every(p => p.location.type === 'home');
-    const effective = allMyHome ? (playerIdx + 2) % 4 : playerIdx;
+    const effective = (state.teamMode && allMyHome) ? (playerIdx + 2) % 4 : playerIdx;
     const pieces = state.players[effective].pieces.filter(p => p.location.type !== 'kennel');
     if (pieces.length === 0) return false;
     // Try single piece full 7
     for (const p of pieces) {
-      if (simulateForward(state, effective, p, 7)) return true;
+      if (simulateForward(state, effective, p, 7).length > 0) return true;
     }
-    // Try splits
+    // Try splits across two DIFFERENT pieces
     for (let i = 0; i < pieces.length; i++) {
       for (let j = 0; j < pieces.length; j++) {
         if (i === j) continue;
         for (let s = 1; s <= 6; s++) {
-          // Need to apply first move tentatively, then check second
-          const r1 = simulateForward(state, effective, pieces[i], s);
-          if (!r1) continue;
-          const tempState = applyMoveTemporary(state, effective, pieces[i], r1, true);
-          const piece2InTemp = tempState.players[effective].pieces[pieces[j].index];
-          const r2 = simulateForward(tempState, effective, piece2InTemp, 7 - s);
-          if (r2) return true;
+          const firsts = simulateForward(state, effective, pieces[i], s);
+          for (const r1 of firsts) {
+            const tempState = applyMoveTemporary(state, effective, pieces[i], r1, true);
+            const piece2InTemp = tempState.players[effective].pieces[pieces[j].index];
+            if (simulateForward(tempState, effective, piece2InTemp, 7 - s).length > 0) return true;
+          }
         }
       }
     }
@@ -484,10 +498,10 @@ const Game = (() => {
       piece.hasLeftStart = false;
       state.log.push(`⚓ ${state.players[playerIdx].name} vaart uit`);
     } else if (move.type === 'forward' || move.type === 'backward' || move.type === 'sevenStep') {
-      // Capture if landing on opponent piece on track
+      // Capture ANY piece on the landing cell — including own (self-capture allowed)
       if (move.dest.type === 'track') {
         const occ = trackPieceAt(state, move.dest.pos);
-        if (occ && occ.playerIdx !== targetPlayerIdx) {
+        if (occ && (occ.playerIdx !== targetPlayerIdx || occ.piece.index !== piece.index)) {
           capturePiece(state, occ.playerIdx, occ.piece.index);
         }
       }
@@ -513,7 +527,7 @@ const Game = (() => {
     const np = newState.players[playerIdx].pieces[piece.index];
     if (result.location.type === 'track') {
       const occ = trackPieceAt(newState, result.location.pos);
-      if (occ && occ.playerIdx !== playerIdx) {
+      if (occ && (occ.playerIdx !== playerIdx || occ.piece.index !== piece.index)) {
         capturePiece(newState, occ.playerIdx, occ.piece.index);
       }
     }
@@ -540,15 +554,15 @@ const Game = (() => {
      ------------------------------------------------------------ */
 
   function endTurn(state) {
-    // Find next non-passed player
-    for (let i = 1; i <= 4; i++) {
-      const idx = (state.currentPlayerIdx + i) % 4;
+    const active = state.activeSeats || [0, 1, 2, 3];
+    const curPos = active.indexOf(state.currentPlayerIdx);
+    for (let i = 1; i <= active.length; i++) {
+      const idx = active[(curPos + i) % active.length];
       if (!state.players[idx].passed && state.players[idx].hand.length > 0) {
         state.currentPlayerIdx = idx;
         return;
       }
     }
-    // No one can play → next round or new deal
     advanceRound(state);
   }
 
@@ -565,25 +579,47 @@ const Game = (() => {
     if (state.roundNumber < 3) {
       dealRound(state, state.roundNumber + 1);
     } else {
-      // New deal: rotate dealer
-      state.dealerIdx = (state.dealerIdx + 1) % 4;
+      // New deal: rotate dealer to next active seat
+      const active = state.activeSeats || [0, 1, 2, 3];
+      const pos = active.indexOf(state.dealerIdx);
+      state.dealerIdx = active[(pos + 1) % active.length];
       dealRound(state, 1);
     }
   }
 
+  /* Update finishOrder + finalize when nobody has anything left to play.
+     - A player "finishes" when all their pieces are in home.
+     - The game ends when all but optionally one player have finished,
+       OR when only one team is still unfinished (in team mode).
+     Game keeps going so everyone can claim a placement (1st, 2nd, 3rd, 4th). */
   function checkWin(state) {
-    // A team wins when both members' pieces are all in their home stretches
-    const teams = [[0, 2], [1, 3]];
-    for (let t = 0; t < 2; t++) {
-      const allHome = teams[t].every(idx =>
-        state.players[idx].pieces.every(p => p.location.type === 'home')
-      );
-      if (allHome) {
-        state.phase = 'finished';
-        state.winnerTeam = t;
-        state.log.push(`🏆 Team ${t === 0 ? 'Zon & Diepzee' : 'Vuurtoren & Oceaan'} wint!`);
-        return;
+    if (!state.finishOrder) state.finishOrder = [];
+    const activePlayers = state.players.filter(p => p.active !== false);
+
+    // Mark newly-finished players (all pieces home for first time)
+    for (const p of activePlayers) {
+      const allHome = p.pieces.every(x => x.location.type === 'home');
+      if (allHome && !state.finishOrder.includes(p.idx)) {
+        state.finishOrder.push(p.idx);
+        state.log.push(`🏁 ${p.name} is binnengevaren (plaats ${state.finishOrder.length})`);
       }
+    }
+
+    // Active player count
+    const n = activePlayers.length;
+    // Game ends when only one player is left (or zero)
+    if (state.finishOrder.length >= n - 1) {
+      // Append the last remaining player(s) to finishOrder
+      for (const p of activePlayers) {
+        if (!state.finishOrder.includes(p.idx)) state.finishOrder.push(p.idx);
+      }
+      state.phase = 'finished';
+      // Team mode: assign winning team based on first-to-finish
+      if (state.teamMode) {
+        const first = state.finishOrder[0];
+        state.winnerTeam = first % 2;
+      }
+      state.log.push(`🏆 Spel afgelopen`);
     }
   }
 
@@ -635,31 +671,35 @@ const Game = (() => {
   }
 
   function pickBotSevenPlan(state, playerIdx, card) {
-    // Try all single-piece full-7 plans first
     const player = state.players[playerIdx];
     const allMyHome = player.pieces.every(p => p.location.type === 'home');
-    const eff = allMyHome ? (playerIdx + 2) % 4 : playerIdx;
+    const eff = (state.teamMode && allMyHome) ? (playerIdx + 2) % 4 : playerIdx;
     const pieces = state.players[eff].pieces.filter(p => p.location.type !== 'kennel');
 
-    // Single piece
+    // Single piece full 7 (pick first valid destination)
     for (const p of pieces) {
-      const r = simulateForward(state, eff, p, 7);
-      if (r) return [{ pieceRef: { playerIdx: eff, pieceIdx: p.index }, steps: 7, dest: r.location, hasLeftStart: r.hasLeftStart }];
+      const rs = simulateForward(state, eff, p, 7);
+      if (rs.length > 0) {
+        const r = rs[0];
+        return [{ pieceRef: { playerIdx: eff, pieceIdx: p.index }, steps: 7, dest: r.location, hasLeftStart: r.hasLeftStart }];
+      }
     }
-    // Split
+    // Split across two DIFFERENT pieces
     for (let i = 0; i < pieces.length; i++) {
       for (let j = 0; j < pieces.length; j++) {
         if (i === j) continue;
         for (let s = 1; s <= 6; s++) {
-          const r1 = simulateForward(state, eff, pieces[i], s);
-          if (!r1) continue;
-          const temp = applyMoveTemporary(state, eff, pieces[i], r1);
-          const r2 = simulateForward(temp, eff, temp.players[eff].pieces[pieces[j].index], 7 - s);
-          if (r2) {
-            return [
-              { pieceRef: { playerIdx: eff, pieceIdx: pieces[i].index }, steps: s, dest: r1.location, hasLeftStart: r1.hasLeftStart },
-              { pieceRef: { playerIdx: eff, pieceIdx: pieces[j].index }, steps: 7 - s, dest: r2.location, hasLeftStart: r2.hasLeftStart },
-            ];
+          const firsts = simulateForward(state, eff, pieces[i], s);
+          for (const r1 of firsts) {
+            const temp = applyMoveTemporary(state, eff, pieces[i], r1);
+            const seconds = simulateForward(temp, eff, temp.players[eff].pieces[pieces[j].index], 7 - s);
+            if (seconds.length > 0) {
+              const r2 = seconds[0];
+              return [
+                { pieceRef: { playerIdx: eff, pieceIdx: pieces[i].index }, steps: s, dest: r1.location, hasLeftStart: r1.hasLeftStart },
+                { pieceRef: { playerIdx: eff, pieceIdx: pieces[j].index }, steps: 7 - s, dest: r2.location, hasLeftStart: r2.hasLeftStart },
+              ];
+            }
           }
         }
       }
@@ -686,20 +726,26 @@ const Game = (() => {
   function applySevenPlan(state, playerIdx, card, plan) {
     const cardIdx = state.players[playerIdx].hand.findIndex(c => c.id === card.id);
     if (cardIdx < 0) return false;
-    // Apply each step in order, capturing along the way
+    // Apply each step in order, capturing (including own) along the way.
+    // Must use exactly the destination chosen in the original plan.
     for (const step of plan) {
       const piece = state.players[step.pieceRef.playerIdx].pieces[step.pieceRef.pieceIdx];
-      // Re-simulate with current state since each step affects board
-      const result = simulateForward(state, step.pieceRef.playerIdx, piece, step.steps);
-      if (!result) return false;
-      if (result.location.type === 'track') {
-        const occ = trackPieceAt(state, result.location.pos);
-        if (occ && occ.playerIdx !== step.pieceRef.playerIdx) {
+      const results = simulateForward(state, step.pieceRef.playerIdx, piece, step.steps);
+      // Find the matching destination from the plan
+      const matched = results.find(r =>
+        r.location.type === step.dest.type &&
+        (r.location.type !== 'track' || r.location.pos === step.dest.pos) &&
+        (r.location.type !== 'home'  || r.location.slot === step.dest.slot)
+      );
+      if (!matched) return false;
+      if (matched.location.type === 'track') {
+        const occ = trackPieceAt(state, matched.location.pos);
+        if (occ && (occ.playerIdx !== step.pieceRef.playerIdx || occ.piece.index !== piece.index)) {
           capturePiece(state, occ.playerIdx, occ.piece.index);
         }
       }
-      piece.location = { ...result.location };
-      piece.hasLeftStart = result.hasLeftStart;
+      piece.location = { ...matched.location };
+      piece.hasLeftStart = matched.hasLeftStart;
     }
     const [used] = state.players[playerIdx].hand.splice(cardIdx, 1);
     state.discard.push(used);

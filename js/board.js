@@ -3,11 +3,11 @@
    ============================================================ */
 
 const Board = (() => {
-  const SIZE = 760;
+  const SIZE = 820;
   const CENTER = SIZE / 2;
-  const TRACK_PADDING = 70;
-  const CELL_R = 18;
-  const CORNER_R = 60;   // rounded corner radius for the track loop
+  const TRACK_PADDING = 80;
+  const CELL_R = 22;
+  const CORNER_R = 70;   // rounded corner radius for the track loop
 
   const TRACK_LEN = 64;
   const CELLS_PER_SIDE = 16;
@@ -218,7 +218,7 @@ const Board = (() => {
       }
     }
 
-    /* Home cells */
+    /* Home cells — anchor symbol on every home slot */
     for (let p = 0; p < 4; p++) {
       for (let s = 0; s < 4; s++) {
         const { x, y } = homeXY(p, s);
@@ -232,18 +232,16 @@ const Board = (() => {
         cell.setAttribute('data-cell-slot', s);
         cell.setAttribute('id', `cell-home-${p}-${s}`);
         root.appendChild(cell);
-        if (s === 3) {
-          // Anchor at the deepest home cell
-          const house = document.createElementNS(svgNS, 'text');
-          house.setAttribute('x', x);
-          house.setAttribute('y', y + 5);
-          house.setAttribute('text-anchor', 'middle');
-          house.setAttribute('font-size', '14');
-          house.setAttribute('fill', 'rgba(0,0,0,0.5)');
-          house.setAttribute('pointer-events', 'none');
-          house.textContent = '⚓';
-          root.appendChild(house);
-        }
+
+        const anchor = document.createElementNS(svgNS, 'text');
+        anchor.setAttribute('x', x);
+        anchor.setAttribute('y', y + 6);
+        anchor.setAttribute('text-anchor', 'middle');
+        anchor.setAttribute('font-size', '16');
+        anchor.setAttribute('fill', 'rgba(20,10,5,0.55)');
+        anchor.setAttribute('pointer-events', 'none');
+        anchor.textContent = '⚓';
+        root.appendChild(anchor);
       }
     }
 
@@ -300,44 +298,44 @@ const Board = (() => {
 
     // Hull — solid player colour, thick dark outline so it stands out on any background
     const hull = document.createElementNS(svgNS, 'path');
-    hull.setAttribute('d', 'M -14 0 Q -16 8 -10 11 L 10 11 Q 16 8 14 0 Z');
+    hull.setAttribute('d', 'M -17 0 Q -19 10 -12 13 L 12 13 Q 19 10 17 0 Z');
     hull.setAttribute('fill', c.hull);
     hull.setAttribute('stroke', '#15080c');
-    hull.setAttribute('stroke-width', '2');
+    hull.setAttribute('stroke-width', '2.2');
     hull.setAttribute('stroke-linejoin', 'round');
     g.appendChild(hull);
 
     // Deck line (gunwale stripe)
     const deck = document.createElementNS(svgNS, 'path');
-    deck.setAttribute('d', 'M -13 1 L 13 1');
+    deck.setAttribute('d', 'M -15 1 L 15 1');
     deck.setAttribute('stroke', '#15080c');
-    deck.setAttribute('stroke-width', '1.5');
+    deck.setAttribute('stroke-width', '1.6');
     g.appendChild(deck);
 
     // Mast — thick dark wooden mast pointing toward center
     const mast = document.createElementNS(svgNS, 'line');
     mast.setAttribute('x1', 0); mast.setAttribute('y1', 1);
-    mast.setAttribute('x2', 0); mast.setAttribute('y2', -17);
+    mast.setAttribute('x2', 0); mast.setAttribute('y2', -20);
     mast.setAttribute('stroke', '#15080c');
-    mast.setAttribute('stroke-width', '2');
+    mast.setAttribute('stroke-width', '2.2');
     mast.setAttribute('stroke-linecap', 'round');
     g.appendChild(mast);
 
     // Sail — bright white triangular sail with strong outline
     const sail = document.createElementNS(svgNS, 'path');
-    sail.setAttribute('d', 'M 1 -16 L 11 -3 L 1 -3 Z');
+    sail.setAttribute('d', 'M 1 -19 L 13 -3 L 1 -3 Z');
     sail.setAttribute('fill', '#fdf8e8');
     sail.setAttribute('stroke', '#15080c');
-    sail.setAttribute('stroke-width', '1.5');
+    sail.setAttribute('stroke-width', '1.6');
     sail.setAttribute('stroke-linejoin', 'round');
     g.appendChild(sail);
 
     // Pennant flag in player colour at top of mast
     const flag = document.createElementNS(svgNS, 'path');
-    flag.setAttribute('d', 'M 0 -17 L 7 -19 L 0 -21 Z');
+    flag.setAttribute('d', 'M 0 -20 L 8 -23 L 0 -25 Z');
     flag.setAttribute('fill', c.hull);
     flag.setAttribute('stroke', '#15080c');
-    flag.setAttribute('stroke-width', '1');
+    flag.setAttribute('stroke-width', '1.1');
     flag.setAttribute('stroke-linejoin', 'round');
     g.appendChild(flag);
 

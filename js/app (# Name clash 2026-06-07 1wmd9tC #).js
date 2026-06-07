@@ -8,20 +8,22 @@ const App = (() => {
   const TEAM_NAMES = ['Team Zon & Diepzee', 'Team Vuurtoren & Oceaan'];
 
   const state = {
-    mode: 'menu',                   // 'menu' | 'host' | 'client'
-    mySeat: null,                   // 0..3
+    mode: 'menu',                   // 'menu' | 'local' | 'host' | 'client'
+    mySeat: null,                   // 0..3 (in current view)
     myName: '',
     gameState: null,
-    lobby: null,                    // { players: [{peerId, name, seat}], code, seatMapping, botSeats }
+    lobby: null,                    // { players: [{peerId, name, seat}], code }
     svg: null,
     selectedCardId: null,
     selectedPieceId: null,          // 'piece-P-I'
     availableMoves: [],
     sevenInProgress: null,          // { card, remaining, plan: [], baseState }
     swapInProgress: null,           // { card, myPieceRef }
-    pendingMove: null,              // move awaiting confirmation
+    pendingMove: null,              // { type:'move', move } or { type:'swap', move } awaiting confirmation
+    showSeats: false,               // local hot-seat: show one seat's hand at a time
+    localHumanCount: 4,             // 1..4 humans in local mode (rest = bots)
     botSeats: new Set(),            // host: seats explicitly marked as bot in lobby
-    activeSeats: [0, 1, 2, 3],      // seats actually playing this game
+    lastHumanSeat: null,            // local mode: remember last human seat so board doesn't spin on bot turns
   };
 
   /* ============================================================
@@ -331,8 +333,19 @@ const App = (() => {
     return gs.currentPlayerIdx === state.mySeat;
   }
 
+  /* For local hot-seat: viewing seat is the active human. Board doesn't spin on bot turns. */
   function viewingSeat() {
-    return state.mySeat != null ? state.mySeat : 0;
+    if (state.mode !== 'local') return state.mySeat;
+    const gs = state.gameState;
+    if (!gs) return 0;
+    const cur = gs.currentPlayerIdx;
+    if (!gs.players[cur].isBot) {
+      state.lastHumanSeat = cur;
+      return cur;
+    }
+    if (state.lastHumanSeat != null) return state.lastHumanSeat;
+    const firstHuman = gs.players.findIndex(p => !p.isBot);
+    return firstHuman >= 0 ? firstHuman : 0;
   }
 
   function renderGame() {
@@ -356,7 +369,9 @@ const App = (() => {
     const gs = state.gameState;
     const cur = gs.players[gs.currentPlayerIdx];
     const ind = document.getElementById('turn-indicator');
-    ind.textContent = isMyTurn() ? 'Jouw beurt' : `Aan zet: ${cur.name}`;
+    ind.textContent = (isMyTurn() && state.mode !== 'local')
+      ? 'Jouw beurt'
+      : `Aan zet: ${cur.name}`;
     ind.style.background = PLAYER_COLOR_HEX[gs.currentPlayerIdx];
     ind.style.color = '#fff';
 
