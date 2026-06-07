@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Keezen op Zee — Online Bordspel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Pirata+One&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="waves-bg"></div>
+
+  <!-- MENU SCREEN -->
+  <section id="screen-menu" class="screen active">
+    <div class="menu-card">
+      <div class="emblem">⚓</div>
+      <h1 class="title">Keezen op Zee</h1>
+      <p class="subtitle">Een avontuur op het zeven zeeën-bord</p>
+
+      <div class="menu-buttons">
+        <button class="btn btn-primary" data-action="create">
+          <span class="btn-icon">🧭</span>
+          <span class="btn-text">
+            <strong>Nieuwe Reis</strong>
+            <small>Start een spel — kapitein word jij</small>
+          </span>
+        </button>
+        <button class="btn btn-secondary" data-action="join">
+          <span class="btn-icon">⛵</span>
+          <span class="btn-text">
+            <strong>Mee aan Boord</strong>
+            <small>Doe mee met een havencode</small>
+          </span>
+        </button>
+        <button class="btn btn-tertiary" data-action="local">
+          <span class="btn-icon">🏴‍☠️</span>
+          <span class="btn-text">
+            <strong>Aan dezelfde kade</strong>
+            <small>Speel lokaal aan één tafel</small>
+          </span>
+        </button>
+      </div>
+
+      <p class="hint">Tip: deel de havencode of de URL met je medespelers</p>
+    </div>
+  </section>
+
+  <!-- JOIN SCREEN -->
+  <section id="screen-join" class="screen">
+    <div class="menu-card">
+      <div class="emblem">⛵</div>
+      <h1 class="title">Mee aan Boord</h1>
+      <p class="subtitle">Voer de havencode in van de kapitein</p>
+
+      <div class="join-form">
+        <input type="text" id="join-code" placeholder="HAVENCODE" maxlength="6" autocomplete="off" />
+        <input type="text" id="join-name" placeholder="Jouw matrozennaam" maxlength="16" autocomplete="off" />
+        <button class="btn btn-primary" id="join-submit">
+          <span class="btn-icon">🚢</span>
+          <span class="btn-text"><strong>Aanmonsteren</strong></span>
+        </button>
+        <button class="btn btn-link" data-back="menu">← Terug naar de kade</button>
+      </div>
+      <p class="error" id="join-error"></p>
+    </div>
+  </section>
+
+  <!-- NAME SCREEN (host) -->
+  <section id="screen-name" class="screen">
+    <div class="menu-card">
+      <div class="emblem">🧭</div>
+      <h1 class="title">Kies je matrozennaam</h1>
+      <p class="subtitle">Hoe heten ze jou aan boord?</p>
+
+      <div class="join-form">
+        <input type="text" id="host-name" placeholder="Jouw naam" maxlength="16" autocomplete="off" />
+        <button class="btn btn-primary" id="host-submit">
+          <span class="btn-icon">⚓</span>
+          <span class="btn-text"><strong>Reis voorbereiden</strong></span>
+        </button>
+        <button class="btn btn-link" data-back="menu">← Terug naar de kade</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOBBY SCREEN -->
+  <section id="screen-lobby" class="screen">
+    <div class="menu-card lobby-card">
+      <div class="emblem">🚢</div>
+      <h1 class="title">De Bemanning</h1>
+
+      <div class="room-code-box">
+        <label>Havencode</label>
+        <div class="room-code" id="lobby-code">------</div>
+        <button class="btn btn-small" id="copy-code">📋 Kopieer</button>
+        <button class="btn btn-small" id="copy-link">🔗 Kopieer link</button>
+      </div>
+
+      <div class="players-list" id="lobby-players"></div>
+
+      <div class="lobby-controls" id="lobby-controls">
+        <button class="btn btn-primary" id="start-game">
+          <span class="btn-icon">⚓</span>
+          <span class="btn-text"><strong>Werp de trossen los!</strong></span>
+        </button>
+        <p class="hint">Het spel werkt vanaf 2 spelers (lege plaatsen worden bemand door botbemanning)</p>
+      </div>
+      <p class="hint" id="lobby-waiting">Wachten op de kapitein...</p>
+      <button class="btn btn-link" data-back="menu">← Verlaat de boot</button>
+    </div>
+  </section>
+
+  <!-- LOCAL SETUP SCREEN -->
+  <section id="screen-local" class="screen">
+    <div class="menu-card">
+      <div class="emblem">🏴‍☠️</div>
+      <h1 class="title">Lokaal Spel</h1>
+      <p class="subtitle">Vul de namen van de bemanning in</p>
+
+      <div class="join-form" id="local-names">
+        <div class="local-row"><span class="color-dot" data-color="yellow"></span><input type="text" data-seat="0" placeholder="Naam matroos 1" /></div>
+        <div class="local-row"><span class="color-dot" data-color="red"></span><input type="text" data-seat="1" placeholder="Naam matroos 2" /></div>
+        <div class="local-row"><span class="color-dot" data-color="green"></span><input type="text" data-seat="2" placeholder="Naam matroos 3" /></div>
+        <div class="local-row"><span class="color-dot" data-color="blue"></span><input type="text" data-seat="3" placeholder="Naam matroos 4" /></div>
+        <button class="btn btn-primary" id="local-start">
+          <span class="btn-icon">⚓</span>
+          <span class="btn-text"><strong>Begin de reis</strong></span>
+        </button>
+        <button class="btn btn-link" data-back="menu">← Terug naar de kade</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME SCREEN -->
+  <section id="screen-game" class="screen">
+    <div class="game-layout">
+      <header class="game-header">
+        <div class="header-left">
+          <span class="logo-mini">⚓ Keezen op Zee</span>
+        </div>
+        <div class="header-center">
+          <div class="turn-indicator" id="turn-indicator">—</div>
+        </div>
+        <div class="header-right">
+          <span class="round-info" id="round-info">Ronde —</span>
+          <button class="btn btn-icon-only" id="rules-btn" title="Spelregels">📜</button>
+          <button class="btn btn-icon-only" id="leave-btn" title="Verlaat spel">⚓</button>
+        </div>
+      </header>
+
+      <main class="game-main">
+        <aside class="player-panel player-panel-left" id="panel-left"></aside>
+
+        <div class="board-wrapper">
+          <div id="board-container"></div>
+        </div>
+
+        <aside class="player-panel player-panel-right" id="panel-right"></aside>
+      </main>
+
+      <footer class="game-footer">
+        <div class="my-area">
+          <div class="my-hand" id="my-hand"></div>
+          <div class="my-actions" id="my-actions"></div>
+        </div>
+      </footer>
+
+      <div class="message-box" id="message-box"></div>
+    </div>
+  </section>
+
+  <!-- RULES MODAL -->
+  <div class="modal-overlay" id="modal-rules">
+    <div class="modal-card">
+      <button class="modal-close" data-close-modal>×</button>
+      <h2>📜 Spelregels — Keezen op Zee</h2>
+      <div class="rules-content">
+        <h3>Doel</h3>
+        <p>Breng als eerste team al je vier schepen veilig in de eigen thuishaven. Heb je al je schepen thuis, dan help je je teamgenoot.</p>
+
+        <h3>Teams</h3>
+        <p>Vier spelers, twee teams van twee. Teamgenoten zitten tegenover elkaar (Zon ↔ Diepzee, Vuurtoren ↔ Oceaan).</p>
+
+        <h3>Kaarten</h3>
+        <ul>
+          <li><strong>Aas</strong> — schip uit haven (kennel) zetten, óf 1 vooruit</li>
+          <li><strong>Heer</strong> — schip uit haven zetten</li>
+          <li><strong>Vrouw</strong> — 12 vooruit</li>
+          <li><strong>Boer</strong> — wisselen met een ander schip (niet op startveld)</li>
+          <li><strong>Zeven</strong> — 7 verdelen over 1 of 2 schepen</li>
+          <li><strong>Vier</strong> — 4 achteruit</li>
+          <li><strong>Overig</strong> — vooruit zoveel als op de kaart staat</li>
+        </ul>
+
+        <h3>Regels</h3>
+        <ul>
+          <li>Spelers krijgen om beurten kaarten: 5 in ronde 1, 4 in ronde 2 en 3</li>
+          <li>Kun je een kaart spelen, dán moet je dat doen — ook in je nadeel</li>
+          <li>Kun je écht niets, dan leg je je hand af en pas je tot de volgende ronde</li>
+          <li>Een schip op zijn eigen startveld kan niet geslagen, geruild of gepasseerd worden</li>
+          <li>In de thuishaven mag je je eigen schepen niet passeren</li>
+          <li>Een schip dat eenmaal in de thuishaven staat, kan niet meer eruit</li>
+          <li>Eenmaal gelegd, blijft gelegd — geen kaarten terugnemen</li>
+        </ul>
+
+        <h3>Slaan</h3>
+        <p>Land je op een tegenstanderschip, dan vaart het terug naar zijn haven. Op je eigen schip landen mag niet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIN MODAL -->
+  <div class="modal-overlay" id="modal-win">
+    <div class="modal-card win-card">
+      <div class="win-emblem">🏆</div>
+      <h2 id="win-title">Team wint!</h2>
+      <p id="win-subtitle"></p>
+      <button class="btn btn-primary" id="win-back">Terug naar de kade</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
