@@ -278,15 +278,16 @@ const Board = (() => {
 
         const anchor = document.createElementNS(svgNS, 'text');
         anchor.setAttribute('x', x);
-        anchor.setAttribute('y', y + 7);
+        anchor.setAttribute('y', y);
         anchor.setAttribute('text-anchor', 'middle');
-        anchor.setAttribute('font-size', '22');
+        anchor.setAttribute('dominant-baseline', 'central');
+        anchor.setAttribute('font-size', '24');
         anchor.setAttribute('fill', '#1a0e08');
         anchor.setAttribute('opacity', '0.85');
         anchor.setAttribute('pointer-events', 'none');
         anchor.setAttribute('class', 'keep-upright');
         anchor.setAttribute('data-cx', x);
-        anchor.setAttribute('data-cy', y + 7);
+        anchor.setAttribute('data-cy', y);
         anchor.textContent = '⚓';
         root.appendChild(anchor);
       }

@@ -413,8 +413,8 @@ const App = (() => {
     const main = document.querySelector('.game-main');
     const wrap = document.querySelector('.board-wrapper');
     if (!main || !wrap) return;
-    // Reserve ~130 px so the bigger player badges (top/sides) fit outside the loop
-    const reserve = 130;
+    // Reserve 70 px of room around the board for player badges floating outside the loop
+    const reserve = 70;
     const size = Math.max(280, Math.min(main.clientWidth, main.clientHeight) - reserve);
     wrap.style.width = size + 'px';
     wrap.style.height = size + 'px';
@@ -457,26 +457,17 @@ const App = (() => {
     const container = document.getElementById('discard-stack');
     if (!container) return;
     container.innerHTML = '';
-    const recent = (gs.discard || []).slice(-6);          // show up to 6 most-recent cards
-    recent.forEach((card, i) => {
-      const el = makeCardEl(card);
-      el.classList.add('discard-card');
-      el.style.cursor = 'default';
-      // Stable, card-specific rotation so the stack doesn't shift on every re-render
-      const seed = hashStr(card.id) % 31;                 // 0..30
-      const rot = (seed - 15) * 1.4;                      // ~ -21° .. +21°
-      const dx = (seed % 7) - 3;                          // tiny x jitter
-      const dy = ((seed * 3) % 7) - 3;                    // tiny y jitter
-      el.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${rot}deg)`;
-      el.style.zIndex = i;
-      container.appendChild(el);
-    });
-  }
-
-  function hashStr(s) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return Math.abs(h);
+    const last = (gs.discard || []).slice(-1)[0];
+    if (!last) return;
+    const el = makeCardEl(last);
+    el.classList.add('discard-card');
+    el.style.cursor = 'default';
+    container.appendChild(el);
+    // Small "n cards in pile" label under the card
+    const count = document.createElement('div');
+    count.className = 'discard-count';
+    count.textContent = `${gs.discard.length} kaart${gs.discard.length === 1 ? '' : 'en'} afgelegd`;
+    container.appendChild(count);
   }
 
   function maybeShowIntermezzo() {
@@ -529,7 +520,7 @@ const App = (() => {
         <span class="rank-num">${i + 1}.</span>
         <span class="rank-dot" data-color="${colorClass[seat]}"></span>
         <strong>${p.name}</strong>
-        <span class="rank-stats">🏠 ${home} · ⛵ ${track} · ⚓ ${kennel}</span>
+        <span class="rank-stats">🏠 ${kennel} · ⛵ ${track} · ⚓ ${home}</span>
       </div>`;
     }).join('');
     return `<div class="ranking">${rows}</div>`;
@@ -1171,7 +1162,8 @@ const App = (() => {
      ============================================================ */
   function scheduleBotsIfNeeded() {
     if (state.mode === 'client') return; // host runs bots
-    setTimeout(playBotIfNeeded, 2000);
+    // 3 second pause before & after each bot — humans need time to read what happened
+    setTimeout(playBotIfNeeded, 3000);
   }
 
   function playBotIfNeeded() {

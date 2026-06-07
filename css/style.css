@@ -594,48 +594,60 @@ html, body {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 10px;
+  padding: 8px 14px;
   background: linear-gradient(135deg, var(--parchment) 0%, var(--parchment-dark) 100%);
   border: 2px solid var(--wood-dark);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-soft);
   font-family: var(--font-body);
   pointer-events: auto;
-  max-width: 150px;
   white-space: nowrap;
+  transition: box-shadow 0.3s, border-color 0.3s, transform 0.3s;
 }
 .player-badge.active {
-  border-color: var(--brass);
-  box-shadow: 0 0 16px var(--brass);
+  border-color: #ffd45a;
+  background: linear-gradient(135deg, #fff5c8 0%, #f1cf3f 100%);
+  box-shadow:
+    0 0 0 3px rgba(255, 215, 100, 0.55),
+    0 0 22px rgba(255, 200, 60, 0.85),
+    var(--shadow-soft);
+  transform: translateX(-50%) scale(1.06);          /* default for pos-top */
+  animation: badgePulse 1.4s ease-in-out infinite;
 }
-.player-badge.pos-top    { top: -42px;   left: 50%;  transform: translateX(-50%); }
-.player-badge.pos-right  { right: -132px; top: 50%;  transform: translateY(-50%); }
-.player-badge.pos-left   { left: -132px;  top: 50%;  transform: translateY(-50%); }
+.player-badge.pos-right.active { transform: translateY(-50%) scale(1.06); }
+.player-badge.pos-left.active  { transform: translateY(-50%) scale(1.06); }
+
+@keyframes badgePulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 215, 100, 0.45), 0 0 18px rgba(255, 200, 60, 0.7), var(--shadow-soft); }
+  50%      { box-shadow: 0 0 0 5px rgba(255, 215, 100, 0.7),  0 0 30px rgba(255, 200, 60, 0.95), var(--shadow-soft); }
+}
+
+.player-badge.pos-top    { top: -56px;   left: 50%;   transform: translateX(-50%); }
+.player-badge.pos-right  { right: -178px; top: 50%;   transform: translateY(-50%); }
+.player-badge.pos-left   { left: -178px;  top: 50%;   transform: translateY(-50%); }
+
 .badge-info {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1px;
-  line-height: 1.1;
+  gap: 2px;
+  line-height: 1.2;
 }
 .badge-name {
   font-weight: 700;
   font-family: var(--font-heading);
-  font-size: 12.5px;
-  letter-spacing: 0.2px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 16px;
+  letter-spacing: 0.4px;
 }
 .badge-status {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--wood-dark);
   font-style: italic;
 }
 .player-badge .color-dot {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
 }
 
 /* Discard pile in the middle of the board */
@@ -655,29 +667,16 @@ html, body {
   left: 50%;
   width: 60px;
   height: 84px;
-  margin-top: -42px;
-  margin-left: -30px;
   cursor: default !important;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  /* Inline transform set per card combines translate(-50%, -50%) with rotation */
+  transform-origin: center;
 }
 .discard-card .rank-top, .discard-card .rank-bottom {
   font-size: 15px;
 }
 .discard-card .suit-center {
   font-size: 22px;
-}
-.discard-count {
-  position: absolute;
-  top: calc(50% + 50px);
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  font-style: italic;
-  color: var(--wood-dark);
-  white-space: nowrap;
-  background: rgba(244, 231, 200, 0.7);
-  padding: 2px 6px;
-  border-radius: 6px;
 }
 
 #board-container {
