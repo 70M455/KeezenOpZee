@@ -478,21 +478,13 @@ const App = (() => {
   }
 
   function showIntermezzo(gs, prevRound, newRound) {
+    // Only show the standings at the end of a 3-round cycle (when the deck is reshuffled)
     const newDeal = (prevRound === 3 && newRound === 1);
-    const titleEl = document.getElementById('intermezzo-title');
-    const bodyEl = document.getElementById('intermezzo-body');
-    const embEl = document.getElementById('intermezzo-emblem');
+    if (!newDeal) return;
 
-    if (newDeal) {
-      embEl.textContent = '🌊';
-      titleEl.textContent = 'Tussenstand';
-      bodyEl.innerHTML = buildStandingsHtml(gs);
-    } else {
-      embEl.textContent = '📜';
-      titleEl.textContent = `Ronde ${newRound}`;
-      bodyEl.innerHTML = `<p class="intermezzo-text">Nieuwe kaarten worden uitgedeeld...</p>` + buildStandingsHtml(gs);
-    }
-
+    document.getElementById('intermezzo-emblem').textContent = '🌊';
+    document.getElementById('intermezzo-title').textContent = 'Tussenstand';
+    document.getElementById('intermezzo-body').innerHTML = buildStandingsHtml(gs);
     document.getElementById('modal-intermezzo').classList.add('show');
   }
 

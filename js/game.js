@@ -363,16 +363,15 @@ const Game = (() => {
         tryForward(piece, 12);
       }
     } else if (card.rank === 'J') {
-      // Swap: own track piece with any other player's track piece (not on own start square, not own teammate? rule allows any)
+      // Swap (Boer): own piece on track with any opponent's piece on track.
+      // - Your OWN piece on its own start IS allowed to be swapped.
+      // - An OPPONENT's piece on its own start is a blockade — cannot be swapped.
       const myTrackPieces = movePieces.filter(p => p.location.type === 'track');
       for (const mine of myTrackPieces) {
-        // Cannot swap if mine is on its own start square (mine's owner is teammateIdx)
-        if (mine.location.pos === START_POS[teammateIdx]) continue;
         for (const other of state.players) {
           if (other.idx === teammateIdx) continue;
           for (const otherPiece of other.pieces) {
             if (otherPiece.location.type !== 'track') continue;
-            // Cannot swap with piece on its own start
             if (otherPiece.location.pos === START_POS[other.idx]) continue;
             moves.push({
               card, type: 'swap',
