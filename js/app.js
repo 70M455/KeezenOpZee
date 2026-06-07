@@ -19,9 +19,11 @@ const App = (() => {
     availableMoves: [],
     sevenInProgress: null,          // { card, remaining, plan: [], baseState }
     swapInProgress: null,           // { card, myPieceRef }
+    pendingMove: null,              // { type:'move', move } or { type:'swap', move } awaiting confirmation
     showSeats: false,               // local hot-seat: show one seat's hand at a time
     localHumanCount: 4,             // 1..4 humans in local mode (rest = bots)
     botSeats: new Set(),            // host: seats explicitly marked as bot in lobby
+    lastHumanSeat: null,            // local mode: remember last human seat so board doesn't spin on bot turns
   };
 
   /* ============================================================
@@ -382,26 +384,41 @@ const App = (() => {
   }
 
   function isMyTurn() {
-    if (!state.gameState) return false;
-    if (state.mode === 'local') return true; // any player can act (hot-seat)
-    return state.gameState.currentPlayerIdx === state.mySeat;
+    const gs = state.gameState;
+    if (!gs) return false;
+    if (state.mode === 'local') {
+      // In local mode any human can act on their own turn; bots act autonomously
+      return !gs.players[gs.currentPlayerIdx].isBot;
+    }
+    return gs.currentPlayerIdx === state.mySeat;
   }
 
-  /* For local hot-seat: the "viewing seat" is always the current player */
+  /* For local hot-seat: viewing seat is the active human. Board doesn't spin on bot turns. */
   function viewingSeat() {
-    if (state.mode === 'local') return state.gameState.currentPlayerIdx;
-    return state.mySeat;
+    if (state.mode !== 'local') return state.mySeat;
+    const gs = state.gameState;
+    if (!gs) return 0;
+    const cur = gs.currentPlayerIdx;
+    if (!gs.players[cur].isBot) {
+      state.lastHumanSeat = cur;
+      return cur;
+    }
+    if (state.lastHumanSeat != null) return state.lastHumanSeat;
+    const firstHuman = gs.players.findIndex(p => !p.isBot);
+    return firstHuman >= 0 ? firstHuman : 0;
   }
 
   function renderGame() {
     if (!state.gameState) return;
     const gs = state.gameState;
 
+    Board.setViewRotation(state.svg, viewingSeat());
     Board.updatePieces(state.svg, gs.players);
     renderHeader();
     renderOpponents();
     renderHand();
     refreshHighlights();
+    refreshPreview();
 
     if (gs.phase === 'finished') {
       showWinModal();
@@ -546,16 +563,31 @@ const App = (() => {
     if (!isMyTurn() || gs.players[myIdx].isBot) return;
 
     const player = gs.players[myIdx];
-    const canPlay = Game.canPlayAny(gs, myIdx);
 
+    // Confirm/cancel takes priority over other action-bar content
+    if (state.pendingMove) {
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn btn-action-confirm';
+      confirmBtn.innerHTML = '⚓ Bevestig zet';
+      confirmBtn.addEventListener('click', confirmPendingMove);
+      actions.appendChild(confirmBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-action-cancel';
+      cancelBtn.textContent = '✕ Annuleer';
+      cancelBtn.addEventListener('click', clearPendingMove);
+      actions.appendChild(cancelBtn);
+      return;
+    }
+
+    const canPlay = Game.canPlayAny(gs, myIdx);
     if (!canPlay && player.hand.length > 0) {
       const passBtn = document.createElement('button');
-      passBtn.className = 'btn btn-secondary';
-      passBtn.innerHTML = `<span class="btn-icon">🚫</span><span class="btn-text"><strong>Hand afleggen & passen</strong></span>`;
-      passBtn.addEventListener('click', () => {
-        doAction({ type: 'pass' });
-      });
+      passBtn.className = 'btn btn-action-pass';
+      passBtn.textContent = '🚫 Hand afleggen & passen';
+      passBtn.addEventListener('click', () => doAction({ type: 'pass' }));
       actions.appendChild(passBtn);
+      return;
     }
 
     if (state.sevenInProgress) {
@@ -565,10 +597,9 @@ const App = (() => {
       actions.appendChild(hint);
 
       const cancel = document.createElement('button');
-      cancel.className = 'btn btn-link';
-      cancel.textContent = 'Annuleren';
+      cancel.className = 'btn btn-action-cancel';
+      cancel.textContent = '✕ Annuleren';
       cancel.addEventListener('click', () => {
-        // Restore base state for visualization
         state.gameState = Game.deepClone(state.sevenInProgress.baseState);
         state.sevenInProgress = null;
         state.selectedCardId = null;
@@ -576,6 +607,7 @@ const App = (() => {
         renderGame();
       });
       actions.appendChild(cancel);
+      return;
     }
 
     if (state.swapInProgress) {
@@ -584,8 +616,8 @@ const App = (() => {
       hint.textContent = `Boer — kies een schip om mee te ruilen`;
       actions.appendChild(hint);
       const cancel = document.createElement('button');
-      cancel.className = 'btn btn-link';
-      cancel.textContent = 'Annuleren';
+      cancel.className = 'btn btn-action-cancel';
+      cancel.textContent = '✕ Annuleer';
       cancel.addEventListener('click', () => {
         state.swapInProgress = null;
         state.selectedCardId = null;
@@ -603,6 +635,7 @@ const App = (() => {
   function selectCard(cardId) {
     const myIdx = viewingSeat();
     const gs = state.gameState;
+    if (state.pendingMove) clearPendingMove();
     state.selectedCardId = cardId;
     state.selectedPieceId = null;
     state.swapInProgress = null;
@@ -691,12 +724,10 @@ const App = (() => {
     // SWAP (Boer)
     if (state.swapInProgress) {
       if (!state.swapInProgress.myPieceRef) {
-        // First click: select own piece
         if (playerIdx !== myIdx) {
           showMessage('Kies eerst een van je eigen schepen');
           return;
         }
-        // Check this piece is part of a valid swap
         const possible = state.availableMoves.filter(m =>
           m.pieceRef.playerIdx === myIdx && m.pieceRef.pieceIdx === pieceIdx
         );
@@ -709,7 +740,6 @@ const App = (() => {
         refreshHighlights();
         return;
       } else {
-        // Second click: select opponent piece
         const mine = state.swapInProgress.myPieceRef;
         const move = state.availableMoves.find(m =>
           m.pieceRef.playerIdx === mine.playerIdx && m.pieceRef.pieceIdx === mine.pieceIdx &&
@@ -719,12 +749,11 @@ const App = (() => {
           showMessage('Dit schip kun je niet ruilen');
           return;
         }
-        doAction({ type: 'move', move });
+        setPendingMove(move);
         return;
       }
     }
 
-    // For other cards: select a piece if it has any valid destinations
     const possible = state.availableMoves.filter(m =>
       m.pieceRef.playerIdx === playerIdx && m.pieceRef.pieceIdx === pieceIdx
     );
@@ -733,9 +762,10 @@ const App = (() => {
       return;
     }
 
-    // If only one possible move (and not seven-split), execute directly
+    // If only one possible move (and not seven-split), preview it directly
     if (possible.length === 1 && !state.sevenInProgress) {
-      doAction({ type: 'move', move: possible[0] });
+      state.selectedPieceId = `piece-${playerIdx}-${pieceIdx}`;
+      setPendingMove(possible[0]);
       return;
     }
 
@@ -777,11 +807,102 @@ const App = (() => {
     const move = candidates.sort((a, b) => (b.steps || 0) - (a.steps || 0))[0];
 
     if (state.sevenInProgress) {
-      // Apply a seven step locally and continue
+      // Apply a seven step locally and continue (no confirm step for splits)
       applySevenStep(move);
     } else {
-      doAction({ type: 'move', move });
+      setPendingMove(move);
     }
+  }
+
+  /* ============================================================
+     MOVE PREVIEW + CONFIRM
+     ============================================================ */
+  function setPendingMove(move) {
+    removePreview();
+    state.pendingMove = move;
+    drawPreview(move);
+    renderActions();
+  }
+
+  function clearPendingMove() {
+    removePreview();
+    state.pendingMove = null;
+    refreshHighlights();
+    renderActions();
+  }
+
+  function confirmPendingMove() {
+    if (!state.pendingMove) return;
+    const move = state.pendingMove;
+    state.pendingMove = null;
+    removePreview();
+    doAction({ type: 'move', move });
+  }
+
+  function drawPreview(move) {
+    if (!state.svg) return;
+    const root = state.svg.querySelector('#board-root') || state.svg;
+    const mine = move.pieceRef;
+
+    if (move.type === 'swap') {
+      // Show both boats glowing
+      const a = state.svg.querySelector(`#piece-${mine.playerIdx}-${mine.pieceIdx}`);
+      const b = state.svg.querySelector(`#piece-${move.swapWith.playerIdx}-${move.swapWith.pieceIdx}`);
+      if (a) a.classList.add('selected');
+      if (b) b.classList.add('selected');
+      return;
+    }
+
+    // Clone the boat at the destination as a translucent ghost
+    const original = state.svg.querySelector(`#piece-${mine.playerIdx}-${mine.pieceIdx}`);
+    if (!original) return;
+    const ghost = original.cloneNode(true);
+    ghost.id = 'piece-preview';
+    ghost.removeAttribute('data-piece-player');
+    ghost.removeAttribute('data-piece-index');
+    ghost.classList.add('preview-ghost');
+    const xy = Board.pieceXY(move.dest, mine.playerIdx);
+    const rot = Board.rotationFor(move.dest, mine.playerIdx);
+    ghost.setAttribute('transform', `translate(${xy.x}, ${xy.y}) rotate(${rot})`);
+    ghost.setAttribute('pointer-events', 'none');
+    root.appendChild(ghost);
+    // Highlight the original so user sees where the ship is leaving from
+    original.classList.add('selected');
+  }
+
+  function removePreview() {
+    if (!state.svg) return;
+    const ghost = state.svg.querySelector('#piece-preview');
+    if (ghost) ghost.remove();
+  }
+
+  function refreshPreview() {
+    // Called from renderGame after state updates. If pendingMove is set, re-draw the ghost
+    // so it survives state-driven re-renders (e.g. after opponent state update).
+    if (state.pendingMove) {
+      const stillValid = state.availableMoves.some(m => sameMove(m, state.pendingMove));
+      if (!stillValid) {
+        state.pendingMove = null;
+        return;
+      }
+      removePreview();
+      drawPreview(state.pendingMove);
+    } else {
+      removePreview();
+    }
+  }
+
+  function sameMove(a, b) {
+    if (a.type !== b.type) return false;
+    if (a.pieceRef.playerIdx !== b.pieceRef.playerIdx) return false;
+    if (a.pieceRef.pieceIdx !== b.pieceRef.pieceIdx) return false;
+    if (a.type === 'swap') {
+      return a.swapWith.playerIdx === b.swapWith.playerIdx && a.swapWith.pieceIdx === b.swapWith.pieceIdx;
+    }
+    if (a.dest.type !== b.dest.type) return false;
+    if (a.dest.type === 'track') return a.dest.pos === b.dest.pos;
+    if (a.dest.type === 'home')  return a.dest.slot === b.dest.slot;
+    return true;
   }
 
   /* Apply one step of a 7-split locally for visualization, send full plan when done */
@@ -930,6 +1051,8 @@ const App = (() => {
     state.availableMoves = [];
     state.sevenInProgress = null;
     state.swapInProgress = null;
+    state.pendingMove = null;
+    removePreview();
     renderGame();
   }
 

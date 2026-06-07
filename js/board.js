@@ -134,6 +134,11 @@ const Board = (() => {
     const defs = document.createElementNS(svgNS, 'defs');
     svg.appendChild(defs);
 
+    /* Wrapper group used to rotate the whole board so the viewing seat is at the bottom */
+    const root = document.createElementNS(svgNS, 'g');
+    root.setAttribute('id', 'board-root');
+    svg.appendChild(root);
+
     /* Track loop background (rounded rectangle behind cells) */
     const loop = document.createElementNS(svgNS, 'path');
     const m = TRACK_PADDING;
@@ -149,7 +154,7 @@ const Board = (() => {
     loop.setAttribute('stroke', 'rgba(90, 64, 35, 0.25)');
     loop.setAttribute('stroke-width', '36');
     loop.setAttribute('stroke-linejoin', 'round');
-    svg.appendChild(loop);
+    root.appendChild(loop);
 
     /* Compass rose center */
     const rose = document.createElementNS(svgNS, 'g');
@@ -180,7 +185,7 @@ const Board = (() => {
     letterN.setAttribute('font-size', '20');
     letterN.textContent = 'N';
     rose.appendChild(letterN);
-    svg.appendChild(rose);
+    root.appendChild(rose);
 
     /* Track cells */
     for (let i = 0; i < TRACK_LEN; i++) {
@@ -198,7 +203,7 @@ const Board = (() => {
       if (startIdx >= 0) {
         cell.classList.add(`cell-start-p${startIdx}`);
         cell.setAttribute('r', CELL_R + 3);
-        svg.appendChild(cell);
+        root.appendChild(cell);
         // Star marker for start
         const star = document.createElementNS(svgNS, 'text');
         star.setAttribute('x', x); star.setAttribute('y', y + 6);
@@ -207,9 +212,9 @@ const Board = (() => {
         star.setAttribute('fill', 'rgba(0,0,0,0.45)');
         star.setAttribute('pointer-events', 'none');
         star.textContent = '★';
-        svg.appendChild(star);
+        root.appendChild(star);
       } else {
-        svg.appendChild(cell);
+        root.appendChild(cell);
       }
     }
 
@@ -226,7 +231,7 @@ const Board = (() => {
         cell.setAttribute('data-cell-player', p);
         cell.setAttribute('data-cell-slot', s);
         cell.setAttribute('id', `cell-home-${p}-${s}`);
-        svg.appendChild(cell);
+        root.appendChild(cell);
         if (s === 3) {
           // Anchor at the deepest home cell
           const house = document.createElementNS(svgNS, 'text');
@@ -237,7 +242,7 @@ const Board = (() => {
           house.setAttribute('fill', 'rgba(0,0,0,0.5)');
           house.setAttribute('pointer-events', 'none');
           house.textContent = '⚓';
-          svg.appendChild(house);
+          root.appendChild(house);
         }
       }
     }
@@ -255,7 +260,7 @@ const Board = (() => {
         cell.setAttribute('data-cell-player', p);
         cell.setAttribute('data-cell-slot', s);
         cell.setAttribute('id', `cell-kennel-${p}-${s}`);
-        svg.appendChild(cell);
+        root.appendChild(cell);
       }
     }
 
@@ -270,7 +275,7 @@ const Board = (() => {
         const { x, y } = kennelXY(p, i);
         const rot = rotationFor(loc, p);
         boat.setAttribute('transform', `translate(${x}, ${y}) rotate(${rot})`);
-        svg.appendChild(boat);
+        root.appendChild(boat);
       }
     }
 
@@ -339,6 +344,14 @@ const Board = (() => {
     return g;
   }
 
+  /* Rotate the board so the given seat (0..3) appears at the bottom of the screen */
+  function setViewRotation(svg, viewingSeat) {
+    const root = svg && svg.querySelector('#board-root');
+    if (!root) return;
+    const angle = (((2 - viewingSeat) % 4) + 4) % 4 * 90;
+    root.setAttribute('transform', `rotate(${angle} ${CENTER} ${CENTER})`);
+  }
+
   /* Update piece positions based on game state — mast always points to centre */
   function updatePieces(svg, players) {
     players.forEach((player, pIdx) => {
@@ -392,5 +405,7 @@ const Board = (() => {
     markSelectedPiece,
     markTargetCells,
     trackXY, homeXY, kennelXY, pieceXY,
+    rotationFor,
+    setViewRotation,
   };
 })();
